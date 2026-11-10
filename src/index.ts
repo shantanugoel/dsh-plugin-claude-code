@@ -5,6 +5,7 @@ import { ClaudeCodeAdapter } from './adapter.js'
 import { AuthGuard, ProcessHome } from './auth.js'
 import { createProcessAuthRunner } from './auth-process.js'
 import { blockedRouteDescriptor } from './catalog.js'
+import { officialModelDiscovery } from './model-discovery.js'
 import { SessionHeaderWorkspace } from './context.js'
 import { DEFAULT_DEADLINES } from './deadlines.js'
 import { CLAUDE_CODE_SESSION_ROUTE } from './route.js'
@@ -27,7 +28,8 @@ export { CLAUDE_CODE_SESSION_ROUTE } from './route.js'
 
 /**
  * Register the route and release owned sessions on unload.
- * Registration does not advertise a model and does not start a native process.
+ * Registration does not choose a model. The model list is read from Claude
+ * when dsh asks for it. That read does not send a user prompt.
  */
 export function apply(ctx: Context, _config: PluginConfig): void {
   const sessions = new SessionManager()
@@ -40,6 +42,7 @@ export function apply(ctx: Context, _config: PluginConfig): void {
     home: new ProcessHome(),
     parentEnv: () => process.env,
     deadlines: DEFAULT_DEADLINES,
+    discoverModels: () => officialModelDiscovery.list(),
   })
   ctx.llm.registerAdapter([CLAUDE_CODE_SESSION_ROUTE], adapter)
   ctx.llm.registerConfigurableProviders([blockedRouteDescriptor()])

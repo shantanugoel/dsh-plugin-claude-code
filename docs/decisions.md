@@ -130,9 +130,12 @@ show a live Claude process.
 ## D10. Hide the catalog until the spend guard exists
 
 Decision: `prepareCall` captures the configuration generation and refuses
-dispatch after that generation changes. The plugin does not call
-`supportedModels()`. Production supplies no catalog, so the route lists no
-model until discovery supplies one.
+dispatch after that generation changes. `listModels` calls the official SDK
+`supportedModels()` once, without sending a user prompt, and keeps that list.
+Each row uses the official `value` as the dsh model id. The same list is the
+main-model list and the subagent-model list.
 
-Reason: that SDK method can start a process. A supplied catalog row uses the
-official model value as the dsh id. Loading the plugin does not select a model.
+Reason: dsh shows a model only when the route lists it. A subagent session
+uses that same route and its own dsh session. The discovery process starts
+Claude and closes it before a user message is sent. A failed read leaves the
+list empty until a short retry interval passes.

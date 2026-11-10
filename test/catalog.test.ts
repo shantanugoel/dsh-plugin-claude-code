@@ -7,6 +7,7 @@ import { SessionStore } from '@deepseek-ai/dsh-session'
 
 import { blockedRouteDescriptor, projectCatalogModel } from '../src/catalog.js'
 import { apply } from '../src/index.js'
+import { officialModelDiscovery } from '../src/model-discovery.js'
 import { ProductionSpendGate, ScriptedSpendGate } from '../src/spend-gate.js'
 import { textRequest, textTurn } from './request.js'
 import { ScriptedNativeRuntime } from './scripted-runtime.js'
@@ -50,16 +51,29 @@ test('an allowed test gate publishes the exact catalog id', async () => {
   assert.equal(projected.id, 'claude-sonnet-5')
 })
 
-test('loading the plugin on dsh does not advertise a usable model', async () => {
-  const ctx = new Context()
-  await ctx.plugin(SessionStore)
-  await ctx.plugin(LlmRuntime)
-  await ctx.plugin(apply, {})
-  const providers = ctx.llm.listProviders()
-  assert.equal(providers.some((provider) => provider.id === 'claude-code-session'), true)
-  assert.deepEqual(await ctx.llm.listModels('claude-code-session'), [])
-  const blocked = ctx.llm.listConfigurableProviders().find((entry) => entry.provider === 'claude-code-session')
-  assert.equal(blocked?.error, undefined)
+test('loading the plugin advertises the discovered model ids', async () => {
+  const original = officialModelDiscovery.list
+  officialModelDiscovery.list = async () => [
+    { value: 'claude-sonnet-5', displayName: 'Sonnet', description: 'Main and subagent model.' },
+    { value: 'claude-sonnet-5', displayName: 'Duplicate', description: 'Ignored.' },
+  ]
+  try {
+    const ctx = new Context()
+    await ctx.plugin(SessionStore)
+    await ctx.plugin(LlmRuntime)
+    await ctx.plugin(apply, {})
+    const providers = ctx.llm.listProviders()
+    assert.equal(providers.some((provider) => provider.id === 'claude-code-session'), true)
+    const models = await ctx.llm.listModels('claude-code-session')
+    assert.equal(models.length, 1)
+    assert.equal(models[0]?.provider, 'claude-code-session')
+    assert.equal(models[0]?.id, 'claude-sonnet-5')
+    assert.equal(models[0]?.name, 'Sonnet')
+    const blocked = ctx.llm.listConfigurableProviders().find((entry) => entry.provider === 'claude-code-session')
+    assert.equal(blocked?.error, undefined)
+  } finally {
+    officialModelDiscovery.list = original
+  }
 })
 
 test('a prepared call refuses a configuration change before dispatch', async () => {

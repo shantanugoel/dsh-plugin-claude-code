@@ -278,7 +278,7 @@ function packageVersion(): string {
   throw pluginFailure('INCOMPATIBLE_RUNTIME', 'The package version is missing.')
 }
 
-function findClaudeExecutable(pathValue: string | undefined): string {
+export function findClaudeExecutable(pathValue: string | undefined): string {
   const directories = (pathValue ?? '').split(':').filter((entry) => entry.trim() !== '')
   for (const directory of directories) {
     const candidate = join(directory, 'claude')

@@ -17,6 +17,7 @@ import { withDeadline, type Deadlines } from './deadlines.js'
 import { pluginFailure } from './errors.js'
 import { McpBridge, mapToolNames } from './mcp-bridge.js'
 import { projectCatalogModel } from './catalog.js'
+import type { DiscoveredModel } from './model-discovery.js'
 import { recordContextImport as appendContextImport } from './rebase.js'
 import { parseReplay, type ReplayV1 } from './replay.js'
 import { CLAUDE_CODE_SESSION_ROUTE, INFERENCE_SCOPE } from './route.js'
@@ -40,7 +41,8 @@ export interface AdapterDependencies {
   readonly deadlines: Deadlines
   readonly settingsFiles?: () => readonly string[]
   readonly configuration?: { current(): number }
-  readonly catalog?: readonly { readonly value: string; readonly displayName: string; readonly description?: string }[]
+  readonly catalog?: readonly DiscoveredModel[]
+  readonly discoverModels?: () => Promise<readonly DiscoveredModel[]>
 }
 
 const SUPPORTED_BLOCK_TYPES = new Set(['text', 'reasoning', 'tool-call'])
@@ -86,7 +88,16 @@ export class ClaudeCodeAdapter extends LlmAdapter {
       scope: INFERENCE_SCOPE,
     })
     if (!decision.allowed) return []
-    return (this.dependencies.catalog ?? []).map((info) => projectCatalogModel(provider, info))
+    const rows = this.dependencies.catalog
+      ?? (this.dependencies.discoverModels === undefined ? [] : await this.dependencies.discoverModels())
+    const seen = new Set<string>()
+    const models = []
+    for (const row of rows) {
+      if (seen.has(row.value)) continue
+      seen.add(row.value)
+      models.push(projectCatalogModel(provider, row))
+    }
+    return models
   }
 
   async resolveModel(
