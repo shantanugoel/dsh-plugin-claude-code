@@ -36,10 +36,11 @@ Planned source files:
 | `test/` | Node test-runner tests and scripted SDK transport |
 | `scripts/` | Packaging checks and explicit live-test entry points |
 
-Use `dist/` for future build output. Do not commit it. The distribution artifact
-must include compiled files; a git-sourced dsh installation must either run a
-verified build step or use an attached, built release artifact. Test the actual
-installation method. Do not assume the dsh installer runs a build script.
+Commit the compiled files in `dist/`. A dsh desktop install from the GitHub URL
+copies the `files` list. It does not compile the package. Do not add a
+`prepare` script. pnpm 11 refuses a git package build unless the package is in
+`allowBuilds`. The committed `dist/index.js` is the module that dsh loads.
+Rebuild `dist` and commit it with each source change.
 
 ## dsh adapter
 

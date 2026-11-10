@@ -139,3 +139,15 @@ Reason: dsh shows a model only when the route lists it. A subagent session
 uses that same route and its own dsh session. The discovery process starts
 Claude and closes it before a user message is sent. A failed read leaves the
 list empty until a short retry interval passes.
+
+## D11. Commit the compiled entry for a GitHub install
+
+Decision: commit `dist/`. Do not add a `prepare` or `postinstall` script.
+
+Reason: the desktop app installed `github:shantanugoel/dsh-plugin-claude-code`
+at commit `73053a8`. The installed directory contained `package.json`,
+`cordis.patch.yml`, and `README.md`. `main` is `./dist/index.js`. That file was
+absent, so enable failed with module not found. pnpm copies the `files` list
+and does not compile a git package. A `prepare` script makes that install
+require `allowBuilds`. The compiled files in git are the entry the next update
+loads. Rebuild `dist` before the commit that changes source.

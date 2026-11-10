@@ -159,7 +159,8 @@ configuration generation for the later stream. Production supplies no catalog.
 
 `npm run test:live` exits with code 2. It starts no Claude process. `test`,
 `check`, `build`, and `pack:check` do not call it. The package has no
-`postinstall`, `prepare`, or `prepack` script.
+`postinstall`, `prepare`, or `prepack` script. The git tree includes `dist/`
+so a GitHub install can load `dist/index.js` without a build script.
 
 The package inspection accepted the compiled files, `cordis.patch.yml`, the
 README, and `package.json`. No license is selected. The packed file list does
