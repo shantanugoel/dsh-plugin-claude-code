@@ -1,4 +1,5 @@
 import { withDeadline, type Deadlines } from './deadlines.js'
+import type { ClaudeEffort } from './effort.js'
 import { pluginFailure } from './errors.js'
 import type { McpBridge } from './mcp-bridge.js'
 import type { NativeEvent, NativeSession } from './sdk-runtime.js'
@@ -25,6 +26,7 @@ export interface LiveGeneration {
   readonly bridge: McpBridge
   readonly iterator: AsyncIterator<NativeEvent>
   readonly model: string
+  readonly effort: ClaudeEffort | undefined
   readonly workspace: string
   readonly systemPrompt: string
   readonly toolsCanonical: string

@@ -4,12 +4,15 @@ import { join } from 'node:path'
 
 import { buildChildEnvironment } from './auth.js'
 import { withDeadline } from './deadlines.js'
+import { recordedEffortLevels, type ClaudeEffort } from './effort.js'
 import { findClaudeExecutable } from './official-session.js'
 
 export interface DiscoveredModel {
   readonly value: string
   readonly displayName: string
   readonly description?: string
+  readonly supportsEffort?: boolean
+  readonly supportedEffortLevels?: readonly ClaudeEffort[]
 }
 
 const FAILURE_TTL_MS = 30_000
@@ -87,10 +90,14 @@ async function readOfficialModels(): Promise<readonly DiscoveredModel[]> {
       const value = model.value.trim()
       if (value === '' || value !== model.value.trim()) return []
       const description = model.description.trim()
+      const supportedEffortLevels = recordedEffortLevels(model.supportedEffortLevels)
       return [{
         value,
         displayName: model.displayName.trim() === '' ? value : model.displayName,
         ...(description === '' ? {} : { description }),
+        ...(model.supportsEffort === true
+          ? { supportsEffort: true, supportedEffortLevels }
+          : {}),
       }]
     })
   } finally {

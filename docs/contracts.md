@@ -49,6 +49,9 @@ Use the public package exports, not another adapter's private functions.
 Read `GenerateOptions.sessionId`, `messages`, `system`, `tools`, model,
 reasoning controls, limits, and abort signal. Reject an unsupported control
 before dispatch. Do not silently ignore sampling fields or stop sequences.
+A model that reports effort support offers that model's levels. The selected
+level is fixed for the native generation. A later change returns
+`REBASE_REQUIRED`.
 
 Do not declare `systemPromptUpdate` or `toolUpdate` for the first release.
 The generation uses one fixed prompt and the current tool list. The agent loop
@@ -295,7 +298,7 @@ their names. They are non-retryable unless the failure is proven pre-dispatch.
 | `AUTH_ROUTE_REFUSED` | Authentication could use a disallowed billing route |
 | `BILLING_GUARD_UNAVAILABLE` | No accepted proof prevents a paid request |
 | `PAID_USAGE_REFUSED` | A paid route or paid-only model is known |
-| `REBASE_REQUIRED` | Prefix, workspace, model, prompt, or tools changed |
+| `REBASE_REQUIRED` | Prefix, workspace, model, effort, prompt, or tools changed |
 | `SESSION_BUSY` | Another stream owns admission for this native session |
 | `REPLAY_STATE_INVALID` | Replay data is missing or inconsistent |
 | `NATIVE_CONTEXT_MISMATCH` | Native prompt, tools, or context differ |

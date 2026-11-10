@@ -85,6 +85,7 @@ export async function startOfficialSession(config: NativeSessionConfig): Promise
       verbatimPrompts: true,
       promptSuggestions: false,
       permissionMode: 'dontAsk',
+      ...(launch.effort === undefined ? {} : { effort: launch.effort }),
       allowedTools: [...launch.allowedToolNames],
       enableFileCheckpointing: false,
       env: { ...launch.env },

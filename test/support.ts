@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
 import { ClaudeCodeAdapter } from '../src/adapter.js'
+import type { DiscoveredModel } from '../src/model-discovery.js'
 import { DEFAULT_DEADLINES, type Deadlines } from '../src/deadlines.js'
 import { AuthGuard, type AuthCommand, type AuthCommandResult } from '../src/auth.js'
 import type { WorkspaceSource } from '../src/context.js'
@@ -41,7 +42,7 @@ export function makeAdapter(input: {
   readonly parentEnv?: NodeJS.ProcessEnv
   readonly deadlines?: Deadlines
   readonly configuration?: { current(): number }
-  readonly catalog?: readonly { readonly value: string; readonly displayName: string; readonly description?: string }[]
+  readonly catalog?: readonly DiscoveredModel[]
 }): {
   readonly model: ClaudeCodeAdapter
   readonly runner: RecordingRunner

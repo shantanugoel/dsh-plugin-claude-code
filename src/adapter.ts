@@ -14,6 +14,7 @@ import type { AuthGuard, HomeSource } from './auth.js'
 import { canonicalJson, contentHash } from './canonical.js'
 import { requireAbsoluteWorkspace, type WorkspaceSource } from './context.js'
 import { withDeadline, type Deadlines } from './deadlines.js'
+import { claudeEffort, reasoningFor, type ClaudeEffort } from './effort.js'
 import { pluginFailure } from './errors.js'
 import { McpBridge, mapToolNames } from './mcp-bridge.js'
 import { projectCatalogModel } from './catalog.js'
@@ -110,7 +111,15 @@ export class ClaudeCodeAdapter extends LlmAdapter {
     if (model.trim() === '') {
       throw pluginFailure('UNSUPPORTED_INPUT', 'The model id is empty.')
     }
-    return { provider, id: model, name: model, inputModalities: ['text'] }
+    const row = await this.modelRow(model)
+    const reasoning = reasoningFor(row)
+    return {
+      provider,
+      id: model,
+      name: model,
+      inputModalities: ['text'],
+      ...(reasoning === undefined ? {} : { reasoning }),
+    }
   }
 
   async prepareCall(provider: string, model: string, signal?: AbortSignal): Promise<PreparedAdapterCall> {
@@ -214,7 +223,8 @@ export class ClaudeCodeAdapter extends LlmAdapter {
     workspace: string,
     key: string,
   ): AsyncIterable<StreamChunk> {
-    const live = await this.ensureSession(undefined, key, options, workspace, true)
+    const effort = await this.effortFor(options.model, options.reasoningEffort)
+    const live = await this.ensureSession(undefined, key, options, workspace, true, 'aux', effort)
     try {
       const admission = admitTranscript({
         messages: options.messages,
@@ -261,13 +271,18 @@ export class ClaudeCodeAdapter extends LlmAdapter {
     const prompt = systemPromptOf(options)
     const tools = mapToolNames(options.tools ?? [])
     const toolsCanonical = canonicalJson(tools.tools)
+    const effort = await this.effortFor(options.model, options.reasoningEffort)
     if (live !== undefined && (
       live.model !== options.model
+      || live.effort !== effort
       || live.workspace !== workspace
       || live.systemPrompt !== prompt
       || live.toolsCanonical !== toolsCanonical
     )) {
-      throw pluginFailure('REBASE_REQUIRED', 'The model, workspace, prompt, or tools changed. Start a recorded new generation.')
+      throw pluginFailure(
+        'REBASE_REQUIRED',
+        'The model, effort, workspace, prompt, or tools changed. Start a recorded new generation.',
+      )
     }
     const admission = admitTranscript({
       messages: options.messages,
@@ -280,7 +295,7 @@ export class ClaudeCodeAdapter extends LlmAdapter {
     })
     const generationId = live?.generationId ?? this.dependencies.sessions.nextGeneration(sessionId)
     const key = live?.key ?? `${sessionId}:${generationId}`
-    if (live === undefined) live = await this.ensureSession(undefined, key, options, workspace, false, generationId)
+    if (live === undefined) live = await this.ensureSession(undefined, key, options, workspace, false, generationId, effort)
     if (admission.kind === 'tool-results') {
       live.bridge.stage(admission.results)
       if (live.pending !== undefined) {
@@ -348,6 +363,7 @@ export class ClaudeCodeAdapter extends LlmAdapter {
     workspace: string,
     auxiliary: boolean,
     generationId = 'aux',
+    effort?: ClaudeEffort,
   ): Promise<LiveGeneration> {
     if (live !== undefined) return live
     const bridge = new McpBridge()
@@ -361,6 +377,7 @@ export class ClaudeCodeAdapter extends LlmAdapter {
       parentEnv: this.dependencies.parentEnv(),
       home: this.dependencies.home.current(),
       resultWaitMs: this.dependencies.deadlines.resultWaitMs,
+      ...(effort === undefined ? {} : { effort }),
     })
     const native = await withDeadline(this.dependencies.runtime.start({
       workspace,
@@ -379,6 +396,7 @@ export class ClaudeCodeAdapter extends LlmAdapter {
       bridge,
       iterator: native.events[Symbol.asyncIterator](),
       model: options.model,
+      effort,
       workspace,
       systemPrompt: prompt,
       toolsCanonical: canonicalJson(tools.tools),
@@ -402,6 +420,23 @@ export class ClaudeCodeAdapter extends LlmAdapter {
     await live.native.close()
   }
 
+  private async modelRow(model: string) {
+    const rows = this.dependencies.catalog
+      ?? (this.dependencies.discoverModels === undefined ? [] : await this.dependencies.discoverModels())
+    return rows.find((row) => row.value === model)
+  }
+
+  private async effortFor(model: string, requested: string | undefined): Promise<ClaudeEffort | undefined> {
+    const effort = claudeEffort(requested)
+    if (effort === undefined) return undefined
+    const row = await this.modelRow(model)
+    const offered = reasoningFor(row)
+    if (row !== undefined && (offered === undefined || !offered.efforts.some((item) => item.id === effort))) {
+      throw pluginFailure('UNSUPPORTED_INPUT', `The reasoning effort "${effort}" is not supported for this model.`)
+    }
+    return effort
+  }
+
   private assertRoute(provider: string): void {
     if (provider !== CLAUDE_CODE_SESSION_ROUTE) {
       throw pluginFailure(
@@ -415,7 +450,6 @@ export class ClaudeCodeAdapter extends LlmAdapter {
 function assertSupportedRequest(options: GenerateOptions): void {
   if (options.temperature !== undefined) refuseControl('temperature')
   if (options.maxTokens !== undefined) refuseControl('maxTokens')
-  if (options.reasoningEffort !== undefined) refuseControl('reasoningEffort')
   if (options.stop !== undefined && options.stop.length > 0) refuseControl('stop')
     if (options.purpose !== undefined && !AUXILIARY_PURPOSES.has(options.purpose)) {
       throw pluginFailure('UNSUPPORTED_INPUT', 'This request purpose has no isolated mapping.')

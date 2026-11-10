@@ -76,6 +76,62 @@ test('loading the plugin advertises the discovered model ids', async () => {
   }
 })
 
+test('a model reports only its own effort levels', async () => {
+  const runtime = new ScriptedNativeRuntime()
+  const { model } = makeAdapter({
+    runtime,
+    spendGate: new ProductionSpendGate(),
+    catalog: [
+      {
+        value: 'haiku',
+        displayName: 'Haiku 5.5',
+        supportsEffort: true,
+        supportedEffortLevels: ['max', 'low', 'high', 'xhigh', 'medium'],
+      },
+      {
+        value: 'claude-sonnet-4-6',
+        displayName: 'Sonnet 4.6',
+        supportsEffort: true,
+        supportedEffortLevels: ['low', 'medium', 'high', 'max'],
+      },
+      {
+        value: 'claude-haiku-4-5-20251001',
+        displayName: 'Haiku 4.5',
+      },
+    ],
+  })
+  const haiku = await model.resolveModel('claude-code-session', 'haiku')
+  assert.deepEqual(haiku.reasoning?.efforts.map((effort) => effort.id), ['low', 'medium', 'high', 'xhigh', 'max'])
+  const sonnet = await model.resolveModel('claude-code-session', 'claude-sonnet-4-6')
+  assert.equal(sonnet.reasoning?.efforts.some((effort) => effort.id === 'xhigh'), false)
+  const older = await model.resolveModel('claude-code-session', 'claude-haiku-4-5-20251001')
+  assert.equal(older.reasoning, undefined)
+  runtime.enqueue(textTurn('ok'))
+  const chunks = []
+  for await (const chunk of model.stream({ ...textRequest('hello', 'effort-1'), model: 'haiku', reasoningEffort: 'high' as never })) {
+    chunks.push(chunk)
+  }
+  assert.equal(chunks.at(-1)?.type, 'finish')
+  assert.equal(runtime.starts[0]?.launch?.effort, 'high')
+  await assert.rejects(
+    model.stream({ ...textRequest('hello', 'effort-1'), model: 'haiku', reasoningEffort: 'max' as never })[Symbol.asyncIterator]().next(),
+    (error: unknown) => {
+      assert.ok(error instanceof LlmError)
+      assert.equal(error.code, 'REBASE_REQUIRED')
+      return true
+    },
+  )
+  await assert.rejects(
+    model.stream({ ...textRequest('hello', 'effort-2'), model: 'claude-sonnet-4-6', reasoningEffort: 'xhigh' as never })[Symbol.asyncIterator]().next(),
+    (error: unknown) => {
+      assert.ok(error instanceof LlmError)
+      assert.equal(error.code, 'UNSUPPORTED_INPUT')
+      return true
+    },
+  )
+  assert.equal(runtime.starts.length, 1)
+})
+
 test('a prepared call refuses a configuration change before dispatch', async () => {
   let generation = 1
   const runtime = new ScriptedNativeRuntime()

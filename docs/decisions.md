@@ -171,3 +171,16 @@ Reason: the desktop turn sent one tool, `run_code`. Its schema omits
 `additionalProperties: false`, so the exact compare refused the turn before
 Claude started. The same compare accepts the 33 tool schemas recorded in local
 harness sessions on 2026-11-10. Those session files stay outside git.
+
+## D14. Offer each model's reported effort levels
+
+Decision: `resolveModel` returns the effort levels reported by
+`supportedModels()`. The selected level is `query` option `effort`. It stays
+fixed for that native generation.
+
+Reason: the desktop selector reads `reasoning.efforts`. This route returned
+no efforts, so only the model could be selected. A live read on 2026-11-10
+showed Haiku 5.5 offers low, medium, high, xhigh, and max. Opus 4.6 and
+Sonnet 4.6 omit xhigh. Haiku 4.5 reports no effort support. A level outside
+that model's list is refused. A change after the session starts returns
+`REBASE_REQUIRED`.

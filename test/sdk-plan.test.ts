@@ -63,6 +63,18 @@ test('the launch plan keeps one query and only the dsh MCP server', () => {
   assert.equal(plan.settings.autoCompactEnabled, false)
   assert.equal(plan.settings.disableClaudeAiConnectors, true)
   assert.equal(plan.settings.switchModelsOnFlag, false)
+  assert.equal(plan.effort, undefined)
+  const withEffort = buildSdkLaunchPlan({
+    workspace: '/tmp/workspace-a',
+    model: 'haiku',
+    systemPrompt: 'Use the host tools.',
+    tools: tools.tools,
+    parentEnv: { PATH: '/usr/bin' },
+    home: '/tmp/isolated-home',
+    resultWaitMs: 3_600_000,
+    effort: 'high',
+  })
+  assert.equal(withEffort.effort, 'high')
   assert.equal(plan.env['HOME'], '/tmp/isolated-home')
   assert.equal(plan.env['PATH'], '/usr/bin')
   assert.equal(plan.env['ANTHROPIC_API_KEY'], undefined)

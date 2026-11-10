@@ -1,4 +1,5 @@
 import { buildChildEnvironment } from './auth.js'
+import type { ClaudeEffort } from './effort.js'
 import { pluginFailure } from './errors.js'
 import type { MappedTool } from './mcp-bridge.js'
 
@@ -57,6 +58,7 @@ export interface SdkLaunchPlan {
   readonly verbatimPrompts: true
   readonly promptSuggestions: false
   readonly permissionMode: 'dontAsk'
+  readonly effort?: ClaudeEffort
   readonly enableFileCheckpointing: false
   readonly resumeOmitted: true
   readonly continueConversation: false
@@ -85,6 +87,7 @@ export interface SdkLaunchInput {
   readonly parentEnv: NodeJS.ProcessEnv
   readonly home: string
   readonly resultWaitMs: number
+  readonly effort?: ClaudeEffort
 }
 
 /** Build the native session plan. Billing variables from the parent are absent. */
@@ -129,6 +132,7 @@ export function buildSdkLaunchPlan(input: SdkLaunchInput): SdkLaunchPlan {
     verbatimPrompts: true,
     promptSuggestions: false,
     permissionMode: 'dontAsk',
+    ...(input.effort === undefined ? {} : { effort: input.effort }),
     enableFileCheckpointing: false,
     resumeOmitted: true,
     continueConversation: false,
