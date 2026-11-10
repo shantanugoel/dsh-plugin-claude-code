@@ -1,5 +1,6 @@
-import { accessSync, constants } from 'node:fs'
-import { join } from 'node:path'
+import { accessSync, constants, readFileSync } from 'node:fs'
+import { dirname, join } from 'node:path'
+import { fileURLToPath } from 'node:url'
 
 import { pluginFailure } from './errors.js'
 import { eventsFromAssistant, readToolUseId } from './sdk-events.js'
@@ -63,7 +64,7 @@ export async function startOfficialSession(config: NativeSessionConfig): Promise
   ))
   const server = sdk.createSdkMcpServer({
     name: DSH_MCP_SERVER,
-    version: '0.0.0',
+    version: packageVersion(),
     tools,
     timeout: launch.mcpTimeoutMs,
   })
@@ -254,6 +255,27 @@ class EventQueue implements AsyncIterable<NativeEvent> {
     const waiters = this.waiters.splice(0)
     for (const waiter of waiters) waiter()
   }
+}
+
+function packageVersion(): string {
+  let directory = dirname(fileURLToPath(import.meta.url))
+  for (let depth = 0; depth < 4; depth += 1) {
+    try {
+      const manifest = JSON.parse(readFileSync(join(directory, 'package.json'), 'utf8')) as {
+        name?: string
+        version?: string
+      }
+      if (manifest.name === 'dsh-plugin-claude-code' && typeof manifest.version === 'string' && manifest.version.trim() !== '') {
+        return manifest.version
+      }
+    } catch {
+      // Look in the parent directory. The compiled file sits below the package root.
+    }
+    const parent = dirname(directory)
+    if (parent === directory) break
+    directory = parent
+  }
+  throw pluginFailure('INCOMPATIBLE_RUNTIME', 'The package version is missing.')
 }
 
 function findClaudeExecutable(pathValue: string | undefined): string {
