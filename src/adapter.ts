@@ -11,11 +11,15 @@ import {
 
 import type { AuthGuard, HomeSource } from './auth.js'
 import { requireAbsoluteWorkspace, type WorkspaceSource } from './context.js'
+import { withDeadline, type Deadlines } from './deadlines.js'
 import { pluginFailure } from './errors.js'
+import { McpBridge, mapToolNames } from './mcp-bridge.js'
 import { CLAUDE_CODE_SESSION_ROUTE, INFERENCE_SCOPE } from './route.js'
 import type { NativeRuntime } from './sdk-runtime.js'
-import type { SessionManager } from './session-manager.js'
+import type { LiveGeneration, SessionManager } from './session-manager.js'
 import type { SpendGate } from './spend-gate.js'
+import { readUntilStop, translateTurn } from './stream.js'
+import { latestUserText, trailingToolResults } from './transcript.js'
 
 export interface AdapterDependencies {
   readonly runtime: NativeRuntime
@@ -25,6 +29,7 @@ export interface AdapterDependencies {
   readonly auth: AuthGuard
   readonly home: HomeSource
   readonly parentEnv: () => NodeJS.ProcessEnv
+  readonly deadlines: Deadlines
   readonly settingsFiles?: () => readonly string[]
 }
 
@@ -77,8 +82,8 @@ export class ClaudeCodeAdapter extends LlmAdapter {
     return { provider, id: model, name: model }
   }
 
-  closeOwnedSessions(): void {
-    this.dependencies.sessions.closeOwned()
+  closeOwnedSessions(): Promise<void> {
+    return this.dependencies.sessions.closeOwned()
   }
 
   async *stream(options: GenerateOptions): AsyncIterable<StreamChunk> {
@@ -109,16 +114,104 @@ export class ClaudeCodeAdapter extends LlmAdapter {
         'No accepted spend guard can prevent a paid request. No model prompt was sent.',
       )
     }
-    const session = await this.dependencies.runtime.start({
+    yield* this.runAdmitted(options, workspace)
+  }
+
+  private async *runAdmitted(options: GenerateOptions, workspace: string): AsyncIterable<StreamChunk> {
+    if (options.sessionId === undefined) {
+      throw pluginFailure('UNSUPPORTED_INPUT', 'The request has no session id.')
+    }
+    const key = `${String(options.sessionId)}:1`
+    let live = this.dependencies.sessions.get(key)
+    if (live?.phase === 'GENERATING' || live?.phase === 'STARTING') {
+      throw pluginFailure('SESSION_BUSY', 'This native session already has an active stream.')
+    }
+    if (live?.phase === 'INVALID' || live?.phase === 'CLOSED') {
+      throw pluginFailure('REBASE_REQUIRED', 'The native generation is closed. Start a recorded new generation.')
+    }
+    if (live !== undefined && (live.model !== options.model || live.workspace !== workspace)) {
+      throw pluginFailure('REBASE_REQUIRED', 'The model or workspace changed. Start a recorded new generation.')
+    }
+    if (live?.phase === 'WAITING_FOR_RESULTS') {
+      this.releaseResults(live, options)
+      await live.native.continueAfterResults()
+      live.phase = 'GENERATING'
+    } else {
+      live = await this.ensureSession(live, key, options, workspace)
+      live.phase = 'GENERATING'
+      await live.native.sendUser({ text: latestUserText(options.messages) })
+    }
+    let translated
+    try {
+      const events = await readUntilStop(live.iterator, live.deadlines.generationMs)
+      const tools = mapToolNames(options.tools ?? [])
+      translated = translateTurn(events, {
+      format: 'claude-session-v1',
+      generationId: '1',
+      model: options.model,
+      workspace,
+      toolNameMap: Object.fromEntries(tools.dshToNative),
+      nativeResponseBlocks: events,
+    })
+    } catch (error) {
+      live.phase = 'INVALID'
+      await live.native.close()
+      throw error
+    }
+    if (translated.pendingCalls.length > 0) {
+      live.bridge.expect(translated.pendingCalls.map((call) => call.id))
+      live.pendingCalls = translated.pendingCalls
+      live.phase = 'WAITING_FOR_RESULTS'
+    } else {
+      live.pendingCalls = []
+      live.phase = 'READY'
+    }
+    for (const chunk of translated.chunks) yield chunk
+  }
+
+  private releaseResults(live: LiveGeneration, options: GenerateOptions): void {
+    const suffix = trailingToolResults(options.messages)
+    if (suffix.endsWithUser) {
+      throw pluginFailure(
+        'UNSUPPORTED_INPUT',
+        'A user message cannot enter a tool-result suffix.',
+      )
+    }
+    live.bridge.stage(suffix.results.map((result) => ({
+      callId: result.callId,
+      text: result.text,
+      isError: result.isError,
+    })))
+  }
+
+  private async ensureSession(
+    live: LiveGeneration | undefined,
+    key: string,
+    options: GenerateOptions,
+    workspace: string,
+  ): Promise<LiveGeneration> {
+    if (live !== undefined) return live
+    const bridge = new McpBridge()
+    mapToolNames(options.tools ?? [])
+    const native = await withDeadline(this.dependencies.runtime.start({
       workspace,
       model: options.model,
       systemPrompt: options.system ?? '',
-    })
-    await session.close()
-    throw pluginFailure(
-      'INCOMPATIBLE_RUNTIME',
-      'The native session loop is not available. No model prompt was sent.',
-    )
+      callTool: (callId) => bridge.wait(callId, this.dependencies.deadlines.resultWaitMs),
+    }), this.dependencies.deadlines.initializationMs, 'INCOMPATIBLE_RUNTIME', 'The native session did not initialize before the deadline.')
+    const created: LiveGeneration = {
+      key,
+      phase: 'STARTING',
+      native,
+      bridge,
+      iterator: native.events[Symbol.asyncIterator](),
+      model: options.model,
+      workspace,
+      deadlines: this.dependencies.deadlines,
+      pendingCalls: [],
+    }
+    this.dependencies.sessions.insert(created)
+    return created
   }
 
   private assertRoute(provider: string): void {

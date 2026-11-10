@@ -12,7 +12,7 @@ import { rejectBlockReplay } from '../src/replay.js'
 import { SdkNativeRuntime } from '../src/sdk-runtime.js'
 import { ProductionSpendGate, ScriptedSpendGate, type SpendGate } from '../src/spend-gate.js'
 import { blockKey } from '../src/stream.js'
-import { textRequest } from './request.js'
+import { textRequest, textTurn } from './request.js'
 import { ScriptedNativeRuntime } from './scripted-runtime.js'
 import { makeAdapter } from './support.js'
 
@@ -56,24 +56,23 @@ test('production stream refuses before the native runtime starts', async () => {
   })
 })
 
-test('an allowed test gate sends no user text', async () => {
+test('an allowed test gate sends the user text only to the scripted runtime', async () => {
   await withFetchCounter(async (calls) => {
     const runtime = new ScriptedNativeRuntime()
+    runtime.enqueue(textTurn('ok'))
     const model = adapter(runtime, new ScriptedSpendGate({
       allowed: true,
       policyId: 'test-only',
       validFor: 'test',
     }))
-    await assert.rejects(model.stream(textRequest())[Symbol.asyncIterator]().next(), (error: unknown) => {
-      assert.ok(error instanceof LlmError)
-      assert.equal(error.code, 'INCOMPATIBLE_RUNTIME')
-      return true
-    })
-    assert.equal(runtime.starts.length, 1)
-    assert.equal(runtime.closeCount, 1)
-    assert.equal(runtime.inputs.length, 0)
-    assert.equal(runtime.starts[0]?.systemPrompt, '')
-    assert.equal(JSON.stringify(runtime.starts).includes('hello'), false)
+    const chunks = []
+    for await (const chunk of model.stream(textRequest())) chunks.push(chunk)
+    const finish = chunks.at(-1)
+    assert.equal(finish?.type, 'finish')
+    if (finish?.type !== 'finish') return
+    assert.equal(finish.reason.kind, 'stop')
+    assert.deepEqual(runtime.inputs, [{ text: 'hello' }])
+    assert.equal(runtime.closeCount, 0)
     assert.equal(calls.length, 0)
   })
 })
@@ -125,11 +124,11 @@ test('the scripted runtime records calls and does not use the network', async ()
       systemPrompt: 'prompt',
     })
     await session.sendUser({ text: 'hello' })
-    session.emit({ type: 'text', text: 'answer' })
+    session.emit({ type: 'message-stop', messageId: 'm1', stopReason: 'end_turn' })
     const iterator = session.events[Symbol.asyncIterator]()
     const event = await iterator.next()
     assert.equal(event.done, false)
-    assert.deepEqual(event.value, { type: 'text', text: 'answer' })
+    assert.deepEqual(event.value, { type: 'message-stop', messageId: 'm1', stopReason: 'end_turn' })
     await session.close()
     const end = await iterator.next()
     assert.equal(end.done, true)

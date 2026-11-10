@@ -24,7 +24,7 @@ import {
   ProductionSpendGate,
   type SpendProof,
 } from '../src/spend-gate.js'
-import { textRequest } from './request.js'
+import { textRequest, textTurn } from './request.js'
 import { ScriptedNativeRuntime } from './scripted-runtime.js'
 import { RecordingRunner, SYNTHETIC_AUTH_STATUS, makeAdapter } from './support.js'
 
@@ -167,20 +167,22 @@ test('spend proof must match the account, scope, and expiry', () => {
   })
 })
 
-test('a valid test proof can pass admission and still sends no user prompt', async () => {
+test('a valid test proof reaches only the scripted runtime', async () => {
   const accepted = interpretAuthStatus({ stdout: SYNTHETIC_AUTH_STATUS, exitCode: 0 })
   const runtime = new ScriptedNativeRuntime()
+  runtime.enqueue(textTurn('ok'))
   const { model } = makeAdapter({
     runtime,
     spendGate: new EvidenceSpendGate(proof(accepted.identityBinding), NOW),
   })
-  const error = await refuse(model)
-  assert.ok(error instanceof LlmError)
-  assert.equal(error.code, 'INCOMPATIBLE_RUNTIME')
-  assert.equal(runtime.starts.length, 1)
-  assert.equal(runtime.inputs.length, 0)
-  assert.equal(runtime.closeCount, 1)
-  assert.equal(JSON.stringify(runtime.starts).includes('hello'), false)
+  const chunks = []
+  for await (const chunk of model.stream(textRequest())) chunks.push(chunk)
+  const finish = chunks.at(-1)
+  assert.equal(finish?.type, 'finish')
+  if (finish?.type !== 'finish') return
+  assert.equal(finish.reason.kind, 'stop')
+  assert.deepEqual(runtime.inputs, [{ text: 'hello' }])
+  assert.equal(runtime.closeCount, 0)
 })
 
 test('the auth process runner does not use a shell', async () => {

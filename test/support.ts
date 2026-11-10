@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
 import { ClaudeCodeAdapter } from '../src/adapter.js'
+import { DEFAULT_DEADLINES, type Deadlines } from '../src/deadlines.js'
 import { AuthGuard, type AuthCommand, type AuthCommandResult } from '../src/auth.js'
 import type { WorkspaceSource } from '../src/context.js'
 import { SessionManager } from '../src/session-manager.js'
@@ -38,6 +39,7 @@ export function makeAdapter(input: {
   readonly workspace?: WorkspaceSource
   readonly settingsFiles?: readonly string[]
   readonly parentEnv?: NodeJS.ProcessEnv
+  readonly deadlines?: Deadlines
 }): {
   readonly model: ClaudeCodeAdapter
   readonly runner: RecordingRunner
@@ -61,6 +63,7 @@ export function makeAdapter(input: {
       ANTHROPIC_API_KEY: 'secret-token',
       ANTHROPIC_BASE_URL: 'https://example.invalid',
     },
+    deadlines: input.deadlines ?? DEFAULT_DEADLINES,
     settingsFiles: () => settingsFiles,
   })
   return { model, runner, home, workspace }

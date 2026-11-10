@@ -3,8 +3,14 @@ import type {
   NativeRuntime,
   NativeSession,
   NativeSessionConfig,
+  NativeToolResult,
   NativeUserInput,
 } from '../src/sdk-runtime.js'
+
+export interface ScriptedTurn {
+  readonly events: readonly NativeEvent[]
+  invokeHandlers?: (call: (callId: string) => Promise<NativeToolResult>) => Promise<void>
+}
 
 /**
  * In-memory native session. It records calls and makes no network request.
@@ -16,7 +22,13 @@ export class ScriptedNativeSession implements NativeSession {
   private readonly waiters: Array<() => void> = []
   private closed = false
 
+  private callTool: ((callId: string) => Promise<NativeToolResult>) | undefined
+
   constructor(private readonly runtime: ScriptedNativeRuntime) {}
+
+  bind(config: NativeSessionConfig): void {
+    this.callTool = config.callTool
+  }
 
   emit(event: NativeEvent): void {
     if (this.closed) {
@@ -37,6 +49,22 @@ export class ScriptedNativeSession implements NativeSession {
     const copy = { text: input.text }
     this.inputs.push(copy)
     this.runtime.inputs.push(copy)
+    this.play(this.runtime.takeTurn())
+  }
+
+  async continueAfterResults(): Promise<void> {
+    if (this.closed) {
+      throw new Error('The scripted session is closed.')
+    }
+    this.play(this.runtime.takeTurn())
+  }
+
+  private play(turn: ScriptedTurn | undefined): void {
+    if (turn === undefined) return
+    for (const event of turn.events) this.emit(event)
+    if (turn.invokeHandlers !== undefined && this.callTool !== undefined) {
+      void turn.invokeHandlers(this.callTool)
+    }
   }
 
   async close(): Promise<void> {
@@ -70,7 +98,16 @@ export class ScriptedNativeRuntime implements NativeRuntime {
   readonly starts: NativeSessionConfig[] = []
   readonly inputs: NativeUserInput[] = []
   readonly sessions: ScriptedNativeSession[] = []
+  private readonly turns: ScriptedTurn[] = []
   closeCount = 0
+
+  enqueue(turn: ScriptedTurn): void {
+    this.turns.push(turn)
+  }
+
+  takeTurn(): ScriptedTurn | undefined {
+    return this.turns.shift()
+  }
 
   start(config: NativeSessionConfig): Promise<ScriptedNativeSession> {
     this.starts.push({
@@ -79,6 +116,7 @@ export class ScriptedNativeRuntime implements NativeRuntime {
       systemPrompt: config.systemPrompt,
     })
     const session = new ScriptedNativeSession(this)
+    session.bind(config)
     this.sessions.push(session)
     return Promise.resolve(session)
   }

@@ -4,8 +4,9 @@ Goal: build one dsh model plugin that uses a persistent official Claude Agent SD
 session, preserves native signed thinking across unchanged tool steps, and leaves
 all tool execution, sandbox rules, and approvals with dsh.
 
-Status: M2 is complete. Production inference remains refused. The offline tests
-do not run the installed Claude binary. Start at M3.
+Status: the scripted session can park tool calls and return dsh results by call
+id. The official SDK query is not started. Production inference remains refused.
+Continue with the remaining M3 SDK configuration, then M4.
 Do not mark later tasks complete from the direct-CLI measurement.
 
 ## Fixed requirements
@@ -79,14 +80,14 @@ M3 through M7 offline. Do not stop all implementation work at this blocker.
   tools, explicit settings sources, partial events, and only the dsh MCP server.
 - [ ] Apply supported controls for advisor, compaction, background operations,
   connectors, extra instructions, and unwanted context discovery.
-- [ ] Build a reversible tool-name map and a lossless JSON Schema mapping.
+- [x] Build a reversible tool-name map and a lossless JSON Schema mapping.
   Detect collisions and refuse unsupported schema forms.
-- [ ] Return waiting promises from tool handlers. Publish the complete response
+- [x] Return waiting promises from tool handlers. Publish the complete response
   batch before any result is delivered, independently of handler arrival order.
-- [ ] Stage all validated dsh results and deliver each by exact native tool ID.
-- [ ] Support text results, tool errors, and approval denials. Refuse unsupported
+- [x] Stage all validated dsh results and deliver each by exact native tool ID.
+- [x] Support text results, tool errors, and approval denials. Refuse unsupported
   content before it can be silently changed or partly delivered.
-- [ ] Add bounded initialization, generation, result-wait, and close deadlines.
+- [x] Add bounded initialization, generation, result-wait, and close deadlines.
   The approval wait must not use the ordinary token-idle timeout.
 
 Completion: offline tests cover one call, parallel calls, identical calls,
