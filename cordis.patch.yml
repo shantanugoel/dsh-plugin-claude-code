@@ -1,0 +1,6 @@
+# Do not list this bundle by default. The route has no usable model while the
+# spend guard is unavailable. Enabling the bundle registers the route. It does
+# not select a model and it does not send a model prompt.
+- insert:
+    - id: claude-code-session
+      name: dsh-plugin-claude-code

@@ -4,8 +4,9 @@ Goal: build one dsh model plugin that uses a persistent official Claude Agent SD
 session, preserves native signed thinking across unchanged tool steps, and leaves
 all tool execution, sandbox rules, and approvals with dsh.
 
-Status: repository preparation is complete. Plugin implementation has not started.
-Start at M1. Do not mark later tasks complete from the direct-CLI measurement.
+Status: M1 is complete. The package installs, type-checks, tests, builds, and
+packs without Claude credentials. Production inference is refused. Start at M2.
+Do not mark later tasks complete from the direct-CLI measurement.
 
 ## Fixed requirements
 
@@ -33,18 +34,18 @@ Read `docs/design.md`, `docs/contracts.md`, `docs/test-plan.md`, and
 
 ## M1. Verify interfaces and create the package
 
-- [ ] Read the exact published minimum-version dsh declarations. Record package
+- [x] Read the exact published minimum-version dsh declarations. Record package
   integrity values and public imports in `docs/compatibility.md`.
-- [ ] Select and pin an official TypeScript Agent SDK version. Verify its
+- [x] Select and pin an official TypeScript Agent SDK version. Verify its
   executable-path, input queue, event stream, MCP, close, and model-discovery APIs.
-- [ ] Add `package.json`, a lockfile, TypeScript configuration, and source modules
+- [x] Add `package.json`, a lockfile, TypeScript configuration, and source modules
   from the contracts file. Use ESM and Node 24.9 or later.
-- [ ] Keep dsh runtime modules as peers. Use the same copies as the host.
-- [ ] Add `check`, `test`, `build`, and `pack:check` scripts. Keep live tests in a
+- [x] Keep dsh runtime modules as peers. Use the same copies as the host.
+- [x] Add `check`, `test`, `build`, and `pack:check` scripts. Keep live tests in a
   separate command that never runs from `test`, installation, or a build hook.
-- [ ] Add the Cordis entry and bundle patch for route `claude-code-session`.
+- [x] Add the Cordis entry and bundle patch for route `claude-code-session`.
   Define settings with the host's supported schema package.
-- [ ] Add a scripted `NativeRuntime` that makes no network requests.
+- [x] Add a scripted `NativeRuntime` that makes no network requests.
 
 Completion: a fresh checkout can install locked dependencies, type-check, run
 offline tests, build, and inspect a package without Claude credentials. No

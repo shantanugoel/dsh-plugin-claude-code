@@ -1,7 +1,7 @@
 # Agent instructions
 
 - Write all documents and specifications in ASD-STE100 Simplified Technical English.
-- Read `README.md`, `PLAN.md`, `docs/design.md`, and `docs/contracts.md` before implementation.
+- Read `README.md`, `docs/PLAN.md`, `docs/design.md`, and `docs/contracts.md` before implementation.
 - Use `docs/test-plan.md` for acceptance criteria. Update the plan when a task is complete.
 - Use the persistent official Claude Agent SDK as the production transport. The
   SDK must run the user's unmodified official Claude executable.

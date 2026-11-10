@@ -1,6 +1,7 @@
 # Claude subscription adapter design
 
-Status: proposed design. No plugin was installed. The saved request test passed.
+Status: the repository has an offline package. No plugin was installed in a dsh
+profile. Production inference is refused. The saved request test passed.
 The complete plugin has not passed an integration test.
 
 Use one stateful `LlmAdapter` with one persistent official Claude Agent SDK
@@ -11,7 +12,7 @@ Do not read, copy, or replay OAuth credentials. The direct `claude -p` process
 was the measurement transport. The SDK is the planned production transport.
 
 Read [contracts.md](contracts.md) for module interfaces and edge cases,
-[test-plan.md](test-plan.md) for acceptance tests, and [../PLAN.md](../PLAN.md)
+[test-plan.md](test-plan.md) for acceptance tests, and [PLAN.md](PLAN.md)
 for the implementation sequence. Later decisions in this file supersede the
 original direct-CLI proposal.
 

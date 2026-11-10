@@ -21,6 +21,10 @@ integrity values when dependencies are added.
 
 ## Official Claude interfaces
 
+Selected TypeScript package on 2026-11-10: `@anthropic-ai/claude-agent-sdk@0.3.322`.
+The selection is recorded in [compatibility.md](compatibility.md). It is a
+declaration check, not a live session test.
+
 - [Agent SDK TypeScript reference](https://code.claude.com/docs/en/agent-sdk/typescript).
 - [Session management](https://code.claude.com/docs/en/agent-sdk/sessions).
 - [Custom tools](https://code.claude.com/docs/en/agent-sdk/custom-tools).

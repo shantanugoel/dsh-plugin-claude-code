@@ -69,3 +69,18 @@ not become live evidence when the checker passes.
 
 Fresh-worker replay, relay insertion, native resume, and ACP are not marked
 impossible. This plan selects one path. Record evidence before closing another.
+
+## D6. Pin the Agent SDK from its published declarations
+
+Decision: pin `@anthropic-ai/claude-agent-sdk` at `0.3.322`. On 2026-11-10 this
+is the newest published version. Its `sdk.d.ts` file declares the executable
+path, a streaming input queue, event iteration, MCP server setup, `close`, and
+`supportedModels`.
+
+Reason: the plugin needs one pinned SDK before the session loop exists. The
+check reads the declaration file. It does not start the SDK. The SDK package
+version is not the Claude CLI version. Production code does not import the SDK
+while the spend guard is unavailable.
+
+Evidence: [compatibility.md](compatibility.md), reviewed 2026-11-10. The saved
+CLI measurement remains Claude Code 2.1.319. That pair is not certified.

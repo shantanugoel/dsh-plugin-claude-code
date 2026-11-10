@@ -1,11 +1,13 @@
 # dsh-plugin-claude-code
 
-A planned DeepSeek Harness model plugin that uses the user's Claude subscription
-through the official Claude Agent SDK and the installed official Claude binary.
+A DeepSeek Harness model plugin for the user's Claude subscription. It will use
+the official Claude Agent SDK and the installed official Claude binary.
 
-Status: design and offline verification files only. There is no installable
-plugin yet. The minimum target is dsh 0.2.2-rc.1. Later releases need their own
-compatibility checks.
+Status: the package can install, type-check, test, build, and pack without
+Claude credentials. Production requests fail with `BILLING_GUARD_UNAVAILABLE`.
+The minimum target is dsh 0.2.2-rc.1. No later dsh release was published on
+2026-11-10. Later releases need their own compatibility checks. The plugin is
+not installed in a dsh profile.
 
 The plugin will keep one native Claude session for each dsh session generation.
 An MCP handler will wait while dsh runs each tool. The same native session will
@@ -18,25 +20,42 @@ continuation. A change to earlier input will require a recorded new generation.
 
 Read these files in order:
 
-1. [PLAN.md](PLAN.md): work sequence, outputs, and completion criteria.
+1. [PLAN.md](docs/PLAN.md): work sequence, outputs, and completion criteria.
 2. [Design](docs/design.md): behavior, constraints, and known limits.
-3. [Contracts](docs/contracts.md): modules, data, state machine, and errors.
-4. [Test plan](docs/test-plan.md): offline and live acceptance tests.
-5. [Decisions](docs/decisions.md): selected approach and open questions.
-6. [Evidence](docs/evidence/README.md): results and their limits.
-7. [Sources](docs/sources.md): package and documentation references.
+3. [Compatibility](docs/compatibility.md): pinned packages and public imports.
+4. [Contracts](docs/contracts.md): modules, data, state machine, and errors.
+5. [Test plan](docs/test-plan.md): offline and live acceptance tests.
+6. [Decisions](docs/decisions.md): selected approach and open questions.
+7. [Evidence](docs/evidence/README.md): results and their limits.
+8. [Sources](docs/sources.md): package and documentation references.
 
 Current files:
 
 ```text
 AGENTS.md                  Instructions for implementation agents
-PLAN.md                    Implementation work sequence
+docs/PLAN.md               Implementation work sequence
 docs/                      Design, contracts, tests, decisions, and evidence
-scripts/verify_thinking.py  Checker for saved CLI request records
-tests/fixtures/            Synthetic checker inputs
+src/                       Plugin source
+test/                      Offline tests and the scripted runtime
+scripts/                   Package checks, the thinking checker, and the live-test refusal
+cordis.patch.yml           Bundle patch for route claude-code-session
 ```
 
-Run the available offline check with Python 3.10 or later:
+Install locked dependencies, then run the offline checks. These commands do not
+need Claude credentials. They do not start a Claude process.
+
+```sh
+npm ci
+npm test
+npm run check
+npm run build
+npm run pack:check
+```
+
+`npm run test:live` is a separate command. It refuses and exits with code 2.
+Do not add it to `test`, installation, or a build hook.
+
+Run the thinking checker alone with Python 3.10 or later:
 
 ```sh
 python3 scripts/verify_thinking.py \

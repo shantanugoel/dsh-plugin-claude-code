@@ -1,0 +1,61 @@
+{
+  "name": "dsh-plugin-claude-code",
+  "version": "0.0.0",
+  "private": true,
+  "description": "DeepSeek Harness model plugin for one persistent official Claude Agent SDK session per dsh generation.",
+  "type": "module",
+  "engines": {
+    "node": ">=24.9.0",
+    "dsh": "0.2.2-rc.1"
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./cordis.patch.yml": "./cordis.patch.yml",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist/**/*.js",
+    "dist/**/*.d.ts",
+    "cordis.patch.yml",
+    "README.md"
+  ],
+  "dsh": {
+    "manifestVersion": 1,
+    "bundle": {
+      "patch": "./cordis.patch.yml",
+      "listedByDefault": false
+    }
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/shantanugoel/dsh-plugin-claude-code.git"
+  },
+  "scripts": {
+    "check": "tsc -p tsconfig.json --noEmit && node scripts/verify-sdk-surface.mjs",
+    "test": "tsc -p tsconfig.test.json && node --test --test-reporter=spec dist-test/test/*.test.js && node scripts/verify-sdk-surface.mjs && python3 scripts/verify_thinking.py tests/fixtures/thinking-roundtrip/session.jsonl tests/fixtures/thinking-roundtrip/output.ndjson --self-test",
+    "build": "tsc -p tsconfig.build.json",
+    "pack:check": "npm run build && node scripts/pack-check.mjs",
+    "test:live": "node scripts/live-test.mjs"
+  },
+  "peerDependencies": {
+    "@deepseek-ai/cordis": "~4.1.0",
+    "@deepseek-ai/dsh-llm": "0.2.2-rc.1"
+  },
+  "dependencies": {
+    "@anthropic-ai/claude-agent-sdk": "0.3.322",
+    "@deepseek-ai/schemastery": "~3.19.0"
+  },
+  "devDependencies": {
+    "@deepseek-ai/cordis": "~4.1.0",
+    "@deepseek-ai/dsh-attachment": "0.2.2-rc.1",
+    "@deepseek-ai/dsh-llm": "0.2.2-rc.1",
+    "@deepseek-ai/dsh-package-manifest": "0.2.2-rc.1",
+    "@types/node": "24.11.2",
+    "typescript": "5.9.3"
+  }
+}
