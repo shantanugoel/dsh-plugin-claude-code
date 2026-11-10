@@ -4,11 +4,11 @@ Goal: build one dsh model plugin that uses a persistent official Claude Agent SD
 session, preserves native signed thinking across unchanged tool steps, and leaves
 all tool execution, sandbox rules, and approvals with dsh.
 
-Status: offline tests pass on 2026-11-10. The route loads on dsh 0.2.2-rc.1 and
-advertises no usable model. The official SDK query is not started. Production
-inference remains refused. `supportedModels()` is not called. No license is
-selected. The agent loop was not driven. M8 stays blocked. Do not mark later
-tasks complete from the direct-CLI measurement.
+Status: on 2026-11-10 the extra-usage lock became optional. A first-party
+subscription login may send a prompt. The official SDK query starts only when
+`SdkNativeRuntime.start` runs. The offline suite does not call it.
+`supportedModels()` is not called. No license is selected. The agent loop was
+not driven. Do not mark later tasks complete from the direct-CLI measurement.
 
 ## Fixed requirements
 
@@ -201,12 +201,11 @@ Completion: all required release tests pass and the spend requirement is met.
 If it remains unmet, deliver the offline-tested plugin with inference disabled
 and a precise blocker report. Do not label it production-ready.
 
-Blocker report, 2026-11-10: production `start` returns `BILLING_GUARD_UNAVAILABLE`
-before it imports the Agent SDK. No accepted pre-inference control prevents paid
-usage. Live acceptance was not run. The offline plugin can install in an
-in-memory dsh context, and that load advertises no usable model. The package
-has no selected license. The agent loop integration and a profile install remain
-open. This build is not production-ready.
+Scope change, 2026-11-10: the user removed the mandatory extra-usage lock.
+Production may send a prompt after a first-party subscription login. Live
+acceptance has not run. The package has no selected license. The agent loop
+integration and a profile install remain open. A successful offline test does
+not show that signed thinking reached Anthropic.
 
 ## Working rules
 

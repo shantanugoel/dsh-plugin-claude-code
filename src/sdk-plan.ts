@@ -20,6 +20,9 @@ export const SESSION_CONTROL_ENV = {
 
 export const DSH_MCP_SERVER = 'dsh'
 
+/** Pinned Agent SDK package version. This is not the Claude CLI version. */
+export const PINNED_SDK_VERSION = '0.3.322'
+
 /**
  * One native query for one generation. The tool-call finish does not close it.
  * This plan is data. It does not import or start the Agent SDK.
@@ -41,6 +44,11 @@ export interface SdkLaunchPlan {
   readonly includePartialMessages: true
   readonly strictMcpConfig: true
   readonly mcpServerNames: readonly [typeof DSH_MCP_SERVER]
+  readonly mcpTools: readonly {
+    readonly name: string
+    readonly description: string
+    readonly parameters: Record<string, unknown>
+  }[]
   readonly mcpToolNames: readonly string[]
   readonly allowedToolNames: readonly string[]
   readonly fallbackModelOmitted: true
@@ -93,7 +101,12 @@ export function buildSdkLaunchPlan(input: SdkLaunchInput): SdkLaunchPlan {
   }
   for (const [name, value] of Object.entries(SESSION_CONTROL_ENV)) env[name] = value
   assertIsolatedEnv(env)
-  const mcpToolNames = input.tools.map((tool) => tool.nativeName)
+  const mcpTools = input.tools.map((tool) => ({
+    name: tool.nativeName,
+    description: tool.description,
+    parameters: tool.parameters,
+  }))
+  const mcpToolNames = mcpTools.map((tool) => tool.name)
   return {
     queryCount: 1,
     eventConsumers: 1,
@@ -107,6 +120,7 @@ export function buildSdkLaunchPlan(input: SdkLaunchInput): SdkLaunchPlan {
     includePartialMessages: true,
     strictMcpConfig: true,
     mcpServerNames: [DSH_MCP_SERVER],
+    mcpTools,
     mcpToolNames,
     allowedToolNames: mcpToolNames.map((name) => `mcp__${DSH_MCP_SERVER}__${name}`),
     fallbackModelOmitted: true,

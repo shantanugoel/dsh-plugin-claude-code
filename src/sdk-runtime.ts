@@ -1,10 +1,8 @@
-import { pluginFailure } from './errors.js'
 import type { SdkLaunchPlan } from './sdk-plan.js'
 
 /**
  * Internal native session boundary. Tests inject a scripted implementation.
- * The production class must not import or start the official SDK while the
- * spend guard is unavailable.
+ * The production class loads the official SDK only when `start` runs.
  */
 export interface NativeToolResult {
   readonly callId: string
@@ -82,14 +80,12 @@ export interface NativeRuntime {
 }
 
 /**
- * Production runtime. `start` fails before it loads the Agent SDK and before
- * it starts a process.
+ * Production runtime. `start` loads the official SDK and the installed Claude
+ * executable. The offline suite does not call `start`.
  */
 export class SdkNativeRuntime implements NativeRuntime {
-  async start(_config: NativeSessionConfig): Promise<NativeSession> {
-    throw pluginFailure(
-      'BILLING_GUARD_UNAVAILABLE',
-      'No accepted spend guard can prevent a paid request. The native session did not start.',
-    )
+  async start(config: NativeSessionConfig): Promise<NativeSession> {
+    const official = await import('./official-session.js')
+    return official.startOfficialSession(config)
   }
 }

@@ -41,14 +41,22 @@ export interface SpendGate {
   decide(check: SpendCheck): Promise<SpendDecision>
 }
 
+/** Policy id for a first-party subscription login with no extra-usage lock. */
+export const SUBSCRIPTION_LOGIN_POLICY = 'subscription-login'
+
 /**
- * Production gate. It refuses every inference purpose until an accepted
- * pre-inference guard exists. A caller-supplied proof cannot change the result.
- * It has no paid-usage override.
+ * Production gate. A first-party subscription login may send a prompt.
+ * This gate does not prove that extra usage stays off.
+ * A caller-supplied proof cannot change the result.
+ * It has no paid-usage switch.
  */
 export class ProductionSpendGate implements SpendGate {
   decide(_check: SpendCheck): Promise<SpendDecision> {
-    return Promise.resolve({ allowed: false, code: 'BILLING_GUARD_UNAVAILABLE' })
+    return Promise.resolve({
+      allowed: true,
+      policyId: SUBSCRIPTION_LOGIN_POLICY,
+      validFor: 'no-spend-lock',
+    })
   }
 }
 

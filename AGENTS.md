@@ -10,8 +10,9 @@
   Do not change client identity or billing headers.
 - Keep signed thinking unchanged inside the native session. A saved signature
   does not authorize its use after an earlier input changes.
-- Keep the strict spend check enabled. If no guard can prevent a charge before
-  inference, refuse inference. Continue independent offline work.
+- A lock that prevents extra usage during a session is optional. Do not refuse
+  inference only because that lock is absent. Keep the first-party subscription
+  check. Refuse an API key, a console login, and a changed billing endpoint.
 - Distinguish a proposed behavior, an offline test, and a live measurement.
   Do not use a successful answer or a cache hit as proof of thinking retention.
 - Do not close an alternative approach without a measurement.

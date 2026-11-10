@@ -40,9 +40,11 @@ prevents paid overflow. With no such guard, return `BILLING_GUARD_UNAVAILABLE`.
 Reason: a response event that reports overage can arrive after a charge. A user
 assertion, a prompt identity change, or a zero cost estimate is not a spend guard.
 
-Open: no accepted pre-inference guard has been measured. This blocks live release,
-not independent offline implementation. Do not replace this requirement with
-an `allowPaidUsage` option unless the user explicitly changes the requirement.
+Revision on 2026-11-10: the user changed this requirement. A lock that keeps
+extra usage off for the whole session is useful. It is not required. Production
+may send a prompt after a first-party subscription login. The absence of the
+lock is not `BILLING_GUARD_UNAVAILABLE`. There is no `allowPaidUsage` switch.
+An API key, a console login, and a changed billing endpoint stay refused.
 
 ## D5. Separate evidence from fixtures
 
@@ -64,10 +66,9 @@ not become live evidence when the checker passes.
 - Which dsh integration can log a full context replacement and gate a workspace
   change before the model request? Do not invent a lifecycle hook.
 - Is there an official, nonbillable way to establish a binding no-overage policy?
-  M2 on 2026-11-10 can bind a proof to an identity, scope, expiry, and interval.
-  Production still returns `BILLING_GUARD_UNAVAILABLE`. Auth status is not that
-  proof. The offline tests use synthetic status and do not run the installed
-  Claude binary.
+  On 2026-11-10 the user made that lock optional. It no longer blocks a prompt.
+  Auth status is still not that proof. The offline tests use synthetic status
+  and do not run the installed Claude binary.
 - Can native resume preserve an interrupted tool turn without rewriting its
   bound input? This is outside the first release until measured.
 
@@ -128,12 +129,10 @@ show a live Claude process.
 
 ## D10. Hide the catalog until the spend guard exists
 
-Decision: `listModels` returns an empty list while `ProductionSpendGate`
-refuses. `prepareCall` captures the configuration generation and refuses
+Decision: `prepareCall` captures the configuration generation and refuses
 dispatch after that generation changes. The plugin does not call
-`supportedModels()`.
+`supportedModels()`. Production supplies no catalog, so the route lists no
+model until discovery supplies one.
 
-Reason: that SDK method can start a process. A process start is not allowed
-before the spend guard. A supplied catalog row uses the official model value
-as the dsh id. The blocked route records `BILLING_GUARD_UNAVAILABLE` on the
-configurable-provider entry. Loading the plugin does not select a model.
+Reason: that SDK method can start a process. A supplied catalog row uses the
+official model value as the dsh id. Loading the plugin does not select a model.

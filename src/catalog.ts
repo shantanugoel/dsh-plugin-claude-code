@@ -25,13 +25,12 @@ export function projectCatalogModel(
   }
 }
 
-/** Diagnostic shown while the spend guard blocks the route. */
+/** Route entry. The catalog stays empty until model discovery supplies rows. */
 export function blockedRouteDescriptor(): LlmConfigurableProvider {
   return {
     provider: CLAUDE_CODE_SESSION_ROUTE,
     displayName: 'Claude Code session',
     settingsNs: 'dsh-plugin-claude-code',
     settingsPath: [],
-    error: 'BILLING_GUARD_UNAVAILABLE. No accepted spend guard can prevent a paid request. This route has no usable model.',
   }
 }

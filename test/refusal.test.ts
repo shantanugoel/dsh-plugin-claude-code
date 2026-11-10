@@ -9,7 +9,6 @@ import { buildChildEnvironment } from '../src/auth.js'
 import { requireAbsoluteWorkspace } from '../src/context.js'
 import { retentionProofAccepted } from '../src/evidence.js'
 import { rejectBlockReplay } from '../src/replay.js'
-import { SdkNativeRuntime } from '../src/sdk-runtime.js'
 import { ProductionSpendGate, ScriptedSpendGate, type SpendGate } from '../src/spend-gate.js'
 import { blockKey } from '../src/stream.js'
 import { textRequest, textTurn } from './request.js'
@@ -34,16 +33,16 @@ async function withFetchCounter(run: (calls: readonly string[]) => Promise<void>
   }
 }
 
-test('production stream refuses before the native runtime starts', async () => {
+test('production spend gate allows the scripted runtime to receive the prompt', async () => {
   await withFetchCounter(async (calls) => {
     const runtime = new ScriptedNativeRuntime()
+    runtime.enqueue(textTurn('ok'))
     const model = adapter(runtime, new ProductionSpendGate())
-    await assert.rejects(model.stream(textRequest())[Symbol.asyncIterator]().next(), (error: unknown) => {
-      assert.ok(error instanceof LlmError)
-      assert.equal(error.code, 'BILLING_GUARD_UNAVAILABLE')
-      return true
-    })
-    assert.equal(runtime.starts.length, 0)
+    const chunks = []
+    for await (const chunk of model.stream(textRequest())) chunks.push(chunk)
+    assert.equal(chunks.at(-1)?.type, 'finish')
+    assert.equal(runtime.starts.length, 1)
+    assert.deepEqual(runtime.inputs, [{ text: 'hello' }])
     assert.equal(calls.length, 0)
     assert.deepEqual(await model.listModels('claude-code-session'), [])
     const policy = model.providerRetryPolicy('claude-code-session')
@@ -106,20 +105,10 @@ test('unsupported controls and content refuse before the runtime starts', async 
   assert.equal(runtime.starts.length, 0)
 })
 
-test('the production runtime refuses before a process can start', async () => {
-  await withFetchCounter(async (calls) => {
-    const runtime = new SdkNativeRuntime()
-    await assert.rejects(runtime.start({
-      workspace: '/tmp/workspace',
-      model: 'claude-haiku-5-5',
-      systemPrompt: 'prompt',
-    }), (error: unknown) => {
-      assert.ok(error instanceof LlmError)
-      assert.equal(error.code, 'BILLING_GUARD_UNAVAILABLE')
-      return true
-    })
-    assert.equal(calls.length, 0)
-  })
+test('the offline suite does not start the official runtime', () => {
+  const source = readFileSync(new URL('../src/sdk-runtime.js', import.meta.url), 'utf8')
+  assert.equal(source.includes('startOfficialSession'), true)
+  assert.equal(source.includes('@anthropic-ai/claude-agent-sdk'), false)
 })
 
 test('the scripted runtime records calls and does not use the network', async () => {

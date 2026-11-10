@@ -46,7 +46,7 @@ result delivery, opened session, close request, and remaining child handle.
 | ID | Setup or change | Required result |
 | --- | --- | --- |
 | O01 | API key, token, endpoint, provider override, or credential helper | Refuse before any model prompt or helper execution |
-| O02 | Missing, stale, mutable, or wrong-account spend proof | `BILLING_GUARD_UNAVAILABLE`; zero model prompts |
+| O02 | Missing, stale, mutable, or wrong-account spend proof | The optional proof checker returns `BILLING_GUARD_UNAVAILABLE`. Production does not require that proof. |
 | O03 | SDK initialization with no prompt | No model request; no automatic selection of a provider |
 | O04 | One text response | One final dsh finish, no duplicate text, replay data stored |
 | O05 | Thinking with empty text and a signature | Native data preserved; no truthiness filter |

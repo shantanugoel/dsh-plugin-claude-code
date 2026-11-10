@@ -94,9 +94,8 @@ program and it does not start a process. The file declares these names:
 - `includePartialMessages`, `settingSources`, and `strictMcpConfig`.
 
 The presence of a name in the declaration file does not prove the running CLI
-applies that option. Production source does not import this package. `start`
-on the production runtime fails with `BILLING_GUARD_UNAVAILABLE` before a
-process can start.
+applies that option. `src/official-session.ts` imports this package when
+`SdkNativeRuntime.start` runs. The offline suite does not call `start`.
 
 `src/sdk-plan.ts` builds the offline launch plan for one query, one event
 consumer, and one streaming input queue. A tool-call finish leaves that query
@@ -126,8 +125,8 @@ Production registration reads `Session.header.cwd` through `ctx.sessions`.
 A missing path fails with `UNSUPPORTED_INPUT` before the auth command. Offline
 tests use a temporary workspace or a real in-memory session store, and a fake
 command runner. They do not execute the installed Claude binary. A valid test
-proof cannot change `ProductionSpendGate`. That gate returns
-`BILLING_GUARD_UNAVAILABLE`.
+proof cannot change `ProductionSpendGate`. That gate allows a prompt and
+records policy `subscription-login` with `validFor` `no-spend-lock`.
 
 The scripted transcript check compares the canonical earlier prefix, binds one
 dsh assistant id to the pending publication, and requires the stored replay
@@ -155,8 +154,8 @@ The same `npm test`, `npm run check`, `npm run build`, and `npm run pack:check`
 commands passed again after the transcript, session-import, and catalog work.
 `pack:check` accepted 43 files. No license is selected. The suite does not read
 Claude credentials and does not contact a model. `supportedModels()` is not
-called. A supplied catalog row is hidden while `ProductionSpendGate` refuses,
-and `prepareCall` keeps one configuration generation for the later stream.
+called. A supplied catalog row uses its exact id. `prepareCall` keeps one
+configuration generation for the later stream. Production supplies no catalog.
 
 `npm run test:live` exits with code 2. It starts no Claude process. `test`,
 `check`, `build`, and `pack:check` do not call it. The package has no

@@ -18,20 +18,21 @@ const CATALOG = [{
   description: 'Exact catalog id.',
 }]
 
-test('a blocked spend gate hides the catalog and keeps the requested model id', async () => {
+test('a supplied catalog keeps the exact model id', async () => {
   const runtime = new ScriptedNativeRuntime()
   const { model } = makeAdapter({
     runtime,
     spendGate: new ProductionSpendGate(),
     catalog: CATALOG,
   })
-  assert.deepEqual(await model.listModels('claude-code-session'), [])
+  const models = await model.listModels('claude-code-session')
+  assert.equal(models[0]?.id, 'claude-haiku-5-5')
   const resolved = await model.resolveModel('claude-code-session', 'claude-haiku-5-5')
   assert.equal(resolved.id, 'claude-haiku-5-5')
   assert.equal(resolved.provider, 'claude-code-session')
   const descriptor = blockedRouteDescriptor()
   assert.equal(descriptor.provider, 'claude-code-session')
-  assert.match(descriptor.error ?? '', /BILLING_GUARD_UNAVAILABLE/)
+  assert.equal(descriptor.error, undefined)
 })
 
 test('an allowed test gate publishes the exact catalog id', async () => {
@@ -58,7 +59,7 @@ test('loading the plugin on dsh does not advertise a usable model', async () => 
   assert.equal(providers.some((provider) => provider.id === 'claude-code-session'), true)
   assert.deepEqual(await ctx.llm.listModels('claude-code-session'), [])
   const blocked = ctx.llm.listConfigurableProviders().find((entry) => entry.provider === 'claude-code-session')
-  assert.match(blocked?.error ?? '', /BILLING_GUARD_UNAVAILABLE/)
+  assert.equal(blocked?.error, undefined)
 })
 
 test('a prepared call refuses a configuration change before dispatch', async () => {

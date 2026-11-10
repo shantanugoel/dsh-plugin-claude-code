@@ -264,12 +264,12 @@ An auth-status check does not establish the usage-credit setting. Neither
 `--max-budget-usd`, a cost estimate, nor hiding the usage-credit purchase command
 proves that a request cannot incur a charge.
 
-Therefore, the strict mode must require a verified account-side restriction
-that cannot be lifted during execution, or an official atomic subscription-only
-request control. Neither has been established for this personal account.
-Until then, strict mode refuses startup with `BILLING_GUARD_UNAVAILABLE`, before
-sending any model input. A manual assertion or an old rate-limit event does not
-remove this refusal.
+On 2026-11-10 the user changed this requirement. A lock that keeps extra usage
+off for the whole session is useful. It is not required. A first-party
+subscription login may send a prompt. The absence of the lock does not return
+`BILLING_GUARD_UNAVAILABLE`. An API key, a console login, and a changed billing
+endpoint stay refused. A usage reading can still report `extra_usage.is_enabled`.
+That reading does not block the prompt.
 
 Anthropic currently states that subscription login for the SDK and `claude -p`
 uses subscription limits. That statement supports the login choice; it does not

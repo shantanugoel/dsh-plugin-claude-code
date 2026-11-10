@@ -163,7 +163,11 @@ test('spend proof must match the account, scope, and expiry', () => {
     identityBinding: accepted.identityBinding,
     scope: INFERENCE_SCOPE,
   }).then((decision) => {
-    assert.deepEqual(decision, { allowed: false, code: 'BILLING_GUARD_UNAVAILABLE' })
+    assert.deepEqual(decision, {
+      allowed: true,
+      policyId: 'subscription-login',
+      validFor: 'no-spend-lock',
+    })
   })
 })
 

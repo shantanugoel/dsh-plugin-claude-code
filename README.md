@@ -4,10 +4,10 @@ A DeepSeek Harness model plugin for the user's Claude subscription. It will use
 the official Claude Agent SDK and the installed official Claude binary.
 
 Status: the package can install, type-check, test, build, and pack without
-Claude credentials. The offline launch plan describes one persistent native
-session. Loading the plugin on dsh 0.2.2-rc.1 advertises no usable model.
-Production requests fail with `BILLING_GUARD_UNAVAILABLE`. The plugin is not
-production-ready.
+Claude credentials. A first-party subscription login may send a prompt. The
+extra-usage lock is optional. Loading the plugin on dsh 0.2.2-rc.1 advertises
+no usable model until discovery supplies one. The offline suite does not start
+Claude. Live acceptance has not run.
 The minimum target is dsh 0.2.2-rc.1. No later dsh release was published on
 2026-11-10. Later releases need their own compatibility checks. The plugin is
 not installed in a dsh profile.
@@ -72,10 +72,10 @@ It starts no Claude process and makes no network request. The synthetic signatur
 has no cryptographic validity. The original live measurement is described in
 [the evidence record](docs/evidence/README.md).
 
-The strict spend guard is unresolved. Until an official control or a verified
-account restriction prevents paid usage before inference, production requests
-must fail with `BILLING_GUARD_UNAVAILABLE`. Offline implementation and integration
-tests can proceed with a test transport. There is no public paid-usage override.
+The extra-usage lock is optional. A first-party subscription login may send a
+prompt. An API key, a console login, and a changed billing endpoint stay
+refused. There is no paid-usage switch. The offline suite uses a scripted
+transport and does not start Claude.
 
 No Console key, OAuth replay, client spoofing, or direct Anthropic model client is
 part of this project. Do not install a different provider as an automatic fallback.
