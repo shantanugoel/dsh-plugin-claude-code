@@ -1,0 +1,44 @@
+# Local settings and credentials
+.env
+.env.*
+!.env.example
+.claude/
+.codex/
+.agents/
+.dsh/
+.npmrc
+*.key
+*.pem
+*.p12
+*.pfx
+
+# Dependencies and build output
+node_modules/
+.pnpm-store/
+dist/
+lib/
+coverage/
+*.tsbuildinfo
+__pycache__/
+*.py[cod]
+.venv/
+
+# Local evidence, logs, and test output
+.local/
+artifacts/
+tmp/
+*.log
+*.debug.log
+*.request.json
+*.response.json
+*.jsonl
+*.ndjson
+!tests/fixtures/**
+
+# Editor and operating-system files
+.DS_Store
+.idea/
+.vscode/
+*.swp
+*.swo
+*~

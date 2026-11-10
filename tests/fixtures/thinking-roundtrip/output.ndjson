@@ -1,0 +1,4 @@
+{"type":"assistant","message":{"id":"fixture-response-1","role":"assistant","content":[{"type":"thinking","thinking":"","signature":"synthetic-signature-not-valid"}]}}
+{"type":"assistant","message":{"id":"fixture-response-1","role":"assistant","content":[{"type":"tool_use","id":"fixture-tool-1","name":"mcp__dsh__probe","input":{"x":7},"caller":{"type":"direct"}}]}}
+{"type":"assistant","message":{"id":"fixture-response-2","role":"assistant","content":[{"type":"text","text":"fixture-token"}]}}
+{"type":"result","subtype":"success","is_error":false,"result":"fixture-token"}

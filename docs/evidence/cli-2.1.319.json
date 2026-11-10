@@ -1,0 +1,31 @@
+{
+  "cli_version": "2.1.319",
+  "model": "claude-haiku-5-5",
+  "requests": 2,
+  "thinking_text_lengths": [
+    0
+  ],
+  "signature_lengths": [
+    912
+  ],
+  "signature_sha256": [
+    "90b38a7f825f4b710c20dbd08849fc8eaf3702231c31166c0420096275cb4506"
+  ],
+  "recorded_native_tools": [
+    "DeferredToolPlaceholder",
+    "mcp__dsh__probe",
+    "advisor"
+  ],
+  "same_recorded_system_tools_and_prefix": true,
+  "same_recorded_thinking_and_tool_blocks": true,
+  "offline_tamper_cases": {
+    "drop_thinking": "rejected",
+    "change_signature": "rejected",
+    "change_thinking_text": "rejected"
+  },
+  "new_inference_requests_during_verification": 0,
+  "measurement_date": "2026-11-10",
+  "transport": "official claude -p; persistent process; not the Agent SDK plugin",
+  "raw_capture_committed": false,
+  "negative_test_scope": "offline changes to saved request records"
+}
