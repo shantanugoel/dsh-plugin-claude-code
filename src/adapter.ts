@@ -5,6 +5,7 @@ import {
   type LlmModelInfo,
   type LlmProviderInfo,
   type LlmResolvedModelInfo,
+  type PreparedAdapterCall,
   type ResolvedRetryPolicy,
   type StreamChunk,
 } from '@deepseek-ai/dsh-llm'
@@ -15,6 +16,7 @@ import { requireAbsoluteWorkspace, type WorkspaceSource } from './context.js'
 import { withDeadline, type Deadlines } from './deadlines.js'
 import { pluginFailure } from './errors.js'
 import { McpBridge, mapToolNames } from './mcp-bridge.js'
+import { projectCatalogModel } from './catalog.js'
 import { recordContextImport as appendContextImport } from './rebase.js'
 import { parseReplay, type ReplayV1 } from './replay.js'
 import { CLAUDE_CODE_SESSION_ROUTE, INFERENCE_SCOPE } from './route.js'
@@ -37,6 +39,8 @@ export interface AdapterDependencies {
   readonly parentEnv: () => NodeJS.ProcessEnv
   readonly deadlines: Deadlines
   readonly settingsFiles?: () => readonly string[]
+  readonly configuration?: { current(): number }
+  readonly catalog?: readonly { readonly value: string; readonly displayName: string; readonly description?: string }[]
 }
 
 const SUPPORTED_BLOCK_TYPES = new Set(['text', 'reasoning', 'tool-call'])
@@ -74,7 +78,15 @@ export class ClaudeCodeAdapter extends LlmAdapter {
 
   async listModels(provider: string): Promise<readonly LlmModelInfo[]> {
     this.assertRoute(provider)
-    return []
+    const decision = await this.dependencies.spendGate.decide({
+      provider,
+      model: 'catalog',
+      purpose: 'catalog',
+      identityBinding: '',
+      scope: INFERENCE_SCOPE,
+    })
+    if (!decision.allowed) return []
+    return (this.dependencies.catalog ?? []).map((info) => projectCatalogModel(provider, info))
   }
 
   async resolveModel(
@@ -83,11 +95,29 @@ export class ClaudeCodeAdapter extends LlmAdapter {
     signal?: AbortSignal,
   ): Promise<LlmResolvedModelInfo> {
     this.assertRoute(provider)
-    throwIfAborted(signal)
+    if (signal?.aborted === true) throw new DOMException('The model request was aborted.', 'AbortError')
     if (model.trim() === '') {
       throw pluginFailure('UNSUPPORTED_INPUT', 'The model id is empty.')
     }
-    return { provider, id: model, name: model }
+    return { provider, id: model, name: model, inputModalities: ['text'] }
+  }
+
+  async prepareCall(provider: string, model: string, signal?: AbortSignal): Promise<PreparedAdapterCall> {
+    const resolved = await this.resolveModel(provider, model, signal)
+    const generation = this.dependencies.configuration?.current() ?? 1
+    return {
+      model: resolved,
+      stream: (options: GenerateOptions) => {
+        const current = this.dependencies.configuration?.current() ?? 1
+        if (current !== generation) {
+          throw pluginFailure('INCOMPATIBLE_RUNTIME', 'The adapter configuration changed before dispatch.')
+        }
+        if (options.provider !== provider || options.model !== model) {
+          throw pluginFailure('UNSUPPORTED_INPUT', 'The prepared model does not match the request.')
+        }
+        return this.stream(options)
+      },
+    }
   }
 
   closeOwnedSessions(): Promise<void> {
@@ -369,13 +399,6 @@ export class ClaudeCodeAdapter extends LlmAdapter {
       )
     }
   }
-}
-
-function throwIfAborted(signal: AbortSignal | undefined): void {
-  if (signal?.aborted !== true) return
-  const reason = signal.reason
-  if (reason instanceof Error) throw reason
-  throw new DOMException('The model request was aborted.', 'AbortError')
 }
 
 function assertSupportedRequest(options: GenerateOptions): void {

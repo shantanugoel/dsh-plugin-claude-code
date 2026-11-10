@@ -5,7 +5,9 @@ the official Claude Agent SDK and the installed official Claude binary.
 
 Status: the package can install, type-check, test, build, and pack without
 Claude credentials. The offline launch plan describes one persistent native
-session. Production requests fail with `BILLING_GUARD_UNAVAILABLE`.
+session. Loading the plugin on dsh 0.2.2-rc.1 advertises no usable model.
+Production requests fail with `BILLING_GUARD_UNAVAILABLE`. The plugin is not
+production-ready.
 The minimum target is dsh 0.2.2-rc.1. No later dsh release was published on
 2026-11-10. Later releases need their own compatibility checks. The plugin is
 not installed in a dsh profile.

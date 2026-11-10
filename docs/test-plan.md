@@ -2,6 +2,11 @@
 
 Use three test layers. Keep the result of each layer separate.
 
+Offline status on 2026-11-10: the Node suite covers rows O01 through O32 with
+synthetic data and the scripted runtime. The dsh 0.2.2-rc.1 LLM service,
+session store, and compaction balance functions are loaded in that suite. The
+agent loop is not driven. No offline command starts the installed Claude binary.
+
 1. Offline unit tests use synthetic data and a scripted SDK transport.
 2. Offline dsh integration tests use real dsh packages and the scripted transport.
 3. Live acceptance tests use the official SDK, official binary, and the user's

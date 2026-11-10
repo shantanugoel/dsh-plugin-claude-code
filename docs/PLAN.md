@@ -4,10 +4,11 @@ Goal: build one dsh model plugin that uses a persistent official Claude Agent SD
 session, preserves native signed thinking across unchanged tool steps, and leaves
 all tool execution, sandbox rules, and approvals with dsh.
 
-Status: the scripted session can park tool calls and return dsh results by call
-id. Transcript checks and dsh session imports are tested offline. The official
-SDK query is not started. Production inference remains refused. Continue with
-M6. Do not mark later tasks complete from the direct-CLI measurement.
+Status: offline tests pass on 2026-11-10. The route loads on dsh 0.2.2-rc.1 and
+advertises no usable model. The official SDK query is not started. Production
+inference remains refused. `supportedModels()` is not called. No license is
+selected. The agent loop was not driven. M8 stays blocked. Do not mark later
+tasks complete from the direct-CLI measurement.
 
 ## Fixed requirements
 
@@ -140,16 +141,21 @@ model change, tool change, plugin unload, export/restore, and missing replay sta
 
 - [ ] Obtain model information through the supported official SDK interface.
   Bind catalog and model preparation to the same configuration generation.
-- [ ] Use exact IDs consistently in the request, dsh prompt, native identity,
+  The preparation binding is tested. `supportedModels()` is not called while
+  the spend guard is unavailable, because that call can start a process.
+- [x] Use exact IDs consistently in the request, dsh prompt, native identity,
   and UI metadata. Do not quietly substitute a different model.
-- [ ] Register the route without advertising usable models until the runtime
+- [x] Register the route without advertising usable models until the runtime
   and spend requirements pass. Return a clear diagnostic for a blocked route.
-- [ ] Use host retry and error conventions without hiding plugin failure codes.
+- [x] Use host retry and error conventions without hiding plugin failure codes.
 - [ ] Test local installation from a built artifact on minimum-version dsh.
   Confirm that installing a plugin alone neither selects it nor spends quota.
+  An in-memory load on the published LLM and session services passes. A dsh
+  profile install was not run.
 - [ ] Check the packed file list. Include compiled code, bundle patch, README,
   and the selected license. Exclude credentials, private logs, tests with real
-  data, caches, and development artifacts.
+  data, caches, and development artifacts. `pack:check` passed on 2026-11-10.
+  No license is selected, so this item stays open.
 
 Completion: package installation, discovery, configuration changes, and removal
 work in an isolated dsh profile. A failed preflight cannot cause fallback to a
@@ -157,12 +163,14 @@ different provider.
 
 ## M7. Finish offline and minimum-version acceptance
 
-- [ ] Complete every required offline row in `docs/test-plan.md`.
+- [x] Complete every required offline row in `docs/test-plan.md`.
 - [ ] Run integration tests with actual dsh 0.2.2-rc.1 packages and a scripted
   native runtime. Repeat on the selected current supported dsh release.
-- [ ] Confirm no offline command reads real credentials or contacts a model.
-- [ ] Run locked install, type-check, tests, build, and package inspection.
-- [ ] Update design and compatibility records to describe the implemented behavior.
+  The LLM service, session store, and compaction balance checks ran on
+  0.2.2-rc.1. No later dsh release was published. The agent loop was not driven.
+- [x] Confirm no offline command reads real credentials or contacts a model.
+- [x] Run locked install, type-check, tests, build, and package inspection.
+- [x] Update design and compatibility records to describe the implemented behavior.
 
 Completion: the plugin is ready for a live acceptance attempt. Describe it as
 offline-tested until M8 passes. Do not claim signed thinking reached Anthropic
@@ -192,6 +200,13 @@ small test. If the user changes that requirement, record the new scope first.
 Completion: all required release tests pass and the spend requirement is met.
 If it remains unmet, deliver the offline-tested plugin with inference disabled
 and a precise blocker report. Do not label it production-ready.
+
+Blocker report, 2026-11-10: production `start` returns `BILLING_GUARD_UNAVAILABLE`
+before it imports the Agent SDK. No accepted pre-inference control prevents paid
+usage. Live acceptance was not run. The offline plugin can install in an
+in-memory dsh context, and that load advertises no usable model. The package
+has no selected license. The agent loop integration and a profile install remain
+open. This build is not production-ready.
 
 ## Working rules
 

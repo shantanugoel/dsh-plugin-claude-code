@@ -125,3 +125,15 @@ so a mid-tool user message is refused. `sessions.flush` reports whether a
 durability listener ran. A true result is required before the native
 generation closes. This measurement uses the published packages. It does not
 show a live Claude process.
+
+## D10. Hide the catalog until the spend guard exists
+
+Decision: `listModels` returns an empty list while `ProductionSpendGate`
+refuses. `prepareCall` captures the configuration generation and refuses
+dispatch after that generation changes. The plugin does not call
+`supportedModels()`.
+
+Reason: that SDK method can start a process. A process start is not allowed
+before the spend guard. A supplied catalog row uses the official model value
+as the dsh id. The blocked route records `BILLING_GUARD_UNAVAILABLE` on the
+configurable-provider entry. Loading the plugin does not select a model.

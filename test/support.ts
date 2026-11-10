@@ -40,6 +40,8 @@ export function makeAdapter(input: {
   readonly settingsFiles?: readonly string[]
   readonly parentEnv?: NodeJS.ProcessEnv
   readonly deadlines?: Deadlines
+  readonly configuration?: { current(): number }
+  readonly catalog?: readonly { readonly value: string; readonly displayName: string; readonly description?: string }[]
 }): {
   readonly model: ClaudeCodeAdapter
   readonly runner: RecordingRunner
@@ -65,6 +67,8 @@ export function makeAdapter(input: {
     },
     deadlines: input.deadlines ?? DEFAULT_DEADLINES,
     settingsFiles: () => settingsFiles,
+    ...(input.configuration === undefined ? {} : { configuration: input.configuration }),
+    ...(input.catalog === undefined ? {} : { catalog: input.catalog }),
   })
   return { model, runner, home, workspace }
 }

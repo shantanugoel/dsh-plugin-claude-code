@@ -151,6 +151,13 @@ Passed on 2026-11-10:
 - `npm run build`
 - `npm run pack:check`
 
+The same `npm test`, `npm run check`, `npm run build`, and `npm run pack:check`
+commands passed again after the transcript, session-import, and catalog work.
+`pack:check` accepted 43 files. No license is selected. The suite does not read
+Claude credentials and does not contact a model. `supportedModels()` is not
+called. A supplied catalog row is hidden while `ProductionSpendGate` refuses,
+and `prepareCall` keeps one configuration generation for the later stream.
+
 `npm run test:live` exits with code 2. It starts no Claude process. `test`,
 `check`, `build`, and `pack:check` do not call it. The package has no
 `postinstall`, `prepare`, or `prepack` script.

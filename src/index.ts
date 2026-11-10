@@ -4,6 +4,7 @@ import z from '@deepseek-ai/schemastery'
 import { ClaudeCodeAdapter } from './adapter.js'
 import { AuthGuard, ProcessHome } from './auth.js'
 import { createProcessAuthRunner } from './auth-process.js'
+import { blockedRouteDescriptor } from './catalog.js'
 import { SessionHeaderWorkspace } from './context.js'
 import { DEFAULT_DEADLINES } from './deadlines.js'
 import { CLAUDE_CODE_SESSION_ROUTE } from './route.js'
@@ -41,7 +42,10 @@ export function apply(ctx: Context, _config: PluginConfig): void {
     deadlines: DEFAULT_DEADLINES,
   })
   ctx.llm.registerAdapter([CLAUDE_CODE_SESSION_ROUTE], adapter)
+  ctx.llm.registerConfigurableProviders([blockedRouteDescriptor()])
   ctx.effect(() => () => {
     adapter.closeOwnedSessions()
   }, 'claude-code-session.close')
 }
+
+Object.assign(apply, { inject })
