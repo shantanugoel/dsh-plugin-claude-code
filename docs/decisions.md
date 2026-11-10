@@ -64,6 +64,10 @@ not become live evidence when the checker passes.
 - Which dsh integration can log a full context replacement and gate a workspace
   change before the model request? Do not invent a lifecycle hook.
 - Is there an official, nonbillable way to establish a binding no-overage policy?
+  M2 on 2026-11-10 can bind a proof to an identity, scope, expiry, and interval.
+  Production still returns `BILLING_GUARD_UNAVAILABLE`. Auth status is not that
+  proof. The offline tests use synthetic status and do not run the installed
+  Claude binary.
 - Can native resume preserve an interrupted tool turn without rewriting its
   bound input? This is outside the first release until measured.
 

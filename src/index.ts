@@ -2,6 +2,9 @@ import { type Context } from '@deepseek-ai/cordis'
 import z from '@deepseek-ai/schemastery'
 
 import { ClaudeCodeAdapter } from './adapter.js'
+import { AuthGuard, ProcessHome } from './auth.js'
+import { createProcessAuthRunner } from './auth-process.js'
+import { UnresolvedWorkspace } from './context.js'
 import { CLAUDE_CODE_SESSION_ROUTE } from './route.js'
 import { SdkNativeRuntime } from './sdk-runtime.js'
 import { SessionManager } from './session-manager.js'
@@ -30,6 +33,10 @@ export function apply(ctx: Context, _config: PluginConfig): void {
     runtime: new SdkNativeRuntime(),
     spendGate: new ProductionSpendGate(),
     sessions,
+    workspace: new UnresolvedWorkspace(),
+    auth: new AuthGuard(createProcessAuthRunner()),
+    home: new ProcessHome(),
+    parentEnv: () => process.env,
   })
   ctx.llm.registerAdapter([CLAUDE_CODE_SESSION_ROUTE], adapter)
   ctx.effect(() => () => {

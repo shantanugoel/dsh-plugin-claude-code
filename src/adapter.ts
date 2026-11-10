@@ -9,8 +9,10 @@ import {
   type StreamChunk,
 } from '@deepseek-ai/dsh-llm'
 
+import type { AuthGuard, HomeSource } from './auth.js'
+import { requireAbsoluteWorkspace, type WorkspaceSource } from './context.js'
 import { pluginFailure } from './errors.js'
-import { CLAUDE_CODE_SESSION_ROUTE } from './route.js'
+import { CLAUDE_CODE_SESSION_ROUTE, INFERENCE_SCOPE } from './route.js'
 import type { NativeRuntime } from './sdk-runtime.js'
 import type { SessionManager } from './session-manager.js'
 import type { SpendGate } from './spend-gate.js'
@@ -19,6 +21,11 @@ export interface AdapterDependencies {
   readonly runtime: NativeRuntime
   readonly spendGate: SpendGate
   readonly sessions: SessionManager
+  readonly workspace: WorkspaceSource
+  readonly auth: AuthGuard
+  readonly home: HomeSource
+  readonly parentEnv: () => NodeJS.ProcessEnv
+  readonly settingsFiles?: () => readonly string[]
 }
 
 const SUPPORTED_BLOCK_TYPES = new Set(['text', 'reasoning', 'tool-call'])
@@ -78,10 +85,23 @@ export class ClaudeCodeAdapter extends LlmAdapter {
     this.assertRoute(options.provider)
     throwIfAborted(options.signal)
     assertSupportedRequest(options)
+    if (options.model.trim() === '') {
+      throw pluginFailure('UNSUPPORTED_INPUT', 'The model id is empty.')
+    }
+    const workspace = requireAbsoluteWorkspace(this.dependencies.workspace.current())
+    const settingsFiles = this.dependencies.settingsFiles?.()
+    const acceptance = await this.dependencies.auth.check({
+      workspace,
+      home: this.dependencies.home.current(),
+      parentEnv: this.dependencies.parentEnv(),
+      ...(settingsFiles === undefined ? {} : { settingsFiles }),
+    })
     const decision = await this.dependencies.spendGate.decide({
       provider: options.provider,
       model: options.model,
       purpose: options.purpose ?? 'conversation',
+      identityBinding: acceptance.identityBinding,
+      scope: INFERENCE_SCOPE,
     })
     if (!decision.allowed) {
       throw pluginFailure(
@@ -89,8 +109,12 @@ export class ClaudeCodeAdapter extends LlmAdapter {
         'No accepted spend guard can prevent a paid request. No model prompt was sent.',
       )
     }
-    // Keep the injected runtime on this object. Do not call start().
-    void this.dependencies.runtime
+    const session = await this.dependencies.runtime.start({
+      workspace,
+      model: options.model,
+      systemPrompt: options.system ?? '',
+    })
+    await session.close()
     throw pluginFailure(
       'INCOMPATIBLE_RUNTIME',
       'The native session loop is not available. No model prompt was sent.',

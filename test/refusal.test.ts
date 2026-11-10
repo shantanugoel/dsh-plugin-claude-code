@@ -5,24 +5,19 @@ import { fileURLToPath } from 'node:url'
 
 import { LlmError } from '@deepseek-ai/dsh-llm'
 
-import { ClaudeCodeAdapter } from '../src/adapter.js'
-import { childEnvironment } from '../src/auth.js'
+import { buildChildEnvironment } from '../src/auth.js'
 import { requireAbsoluteWorkspace } from '../src/context.js'
 import { retentionProofAccepted } from '../src/evidence.js'
 import { rejectBlockReplay } from '../src/replay.js'
 import { SdkNativeRuntime } from '../src/sdk-runtime.js'
-import { SessionManager } from '../src/session-manager.js'
-import { ProductionSpendGate, ScriptedSpendGate } from '../src/spend-gate.js'
+import { ProductionSpendGate, ScriptedSpendGate, type SpendGate } from '../src/spend-gate.js'
 import { blockKey } from '../src/stream.js'
 import { textRequest } from './request.js'
 import { ScriptedNativeRuntime } from './scripted-runtime.js'
+import { makeAdapter } from './support.js'
 
-function adapter(runtime: ScriptedNativeRuntime, gate: ProductionSpendGate | ScriptedSpendGate): ClaudeCodeAdapter {
-  return new ClaudeCodeAdapter({
-    runtime,
-    spendGate: gate,
-    sessions: new SessionManager(),
-  })
+function adapter(runtime: ScriptedNativeRuntime, gate: SpendGate) {
+  return makeAdapter({ runtime, spendGate: gate }).model
 }
 
 async function withFetchCounter(run: (calls: readonly string[]) => Promise<void>): Promise<void> {
@@ -56,11 +51,12 @@ test('production stream refuses before the native runtime starts', async () => {
     if (policy.mode !== 'normal') return
     assert.equal(policy.maxRetries, 0)
     assert.equal(policy.retryableCodes.includes('BILLING_GUARD_UNAVAILABLE'), false)
+    assert.equal(policy.retryableCodes.includes('AUTH_ROUTE_REFUSED'), false)
     assert.equal(policy.retryableCodes.includes('NATIVE_OUTCOME_UNKNOWN'), false)
   })
 })
 
-test('an allowed test gate still does not start a session', async () => {
+test('an allowed test gate sends no user text', async () => {
   await withFetchCounter(async (calls) => {
     const runtime = new ScriptedNativeRuntime()
     const model = adapter(runtime, new ScriptedSpendGate({
@@ -73,7 +69,11 @@ test('an allowed test gate still does not start a session', async () => {
       assert.equal(error.code, 'INCOMPATIBLE_RUNTIME')
       return true
     })
-    assert.equal(runtime.starts.length, 0)
+    assert.equal(runtime.starts.length, 1)
+    assert.equal(runtime.closeCount, 1)
+    assert.equal(runtime.inputs.length, 0)
+    assert.equal(runtime.starts[0]?.systemPrompt, '')
+    assert.equal(JSON.stringify(runtime.starts).includes('hello'), false)
     assert.equal(calls.length, 0)
   })
 })
@@ -155,13 +155,15 @@ test('workspace, replay, evidence, and auth helpers stay local', () => {
   })
   assert.doesNotThrow(() => rejectBlockReplay({ response: {} }))
   assert.equal(blockKey('msg-1', 0), 'msg-1:0')
-  const key = process.env['ANTHROPIC_API_KEY']
-  assert.throws(() => childEnvironment(), (error: unknown) => {
-    assert.ok(error instanceof LlmError)
-    assert.equal(error.code, 'AUTH_ROUTE_REFUSED')
-    return true
-  })
-  assert.equal(process.env['ANTHROPIC_API_KEY'], key)
+  const child = buildChildEnvironment({
+    PATH: '/usr/bin',
+    ANTHROPIC_API_KEY: 'secret-token',
+    ANTHROPIC_BASE_URL: 'https://example.invalid',
+  }, '/tmp/isolated-home')
+  assert.equal(child['PATH'], '/usr/bin')
+  assert.equal(child['HOME'], '/tmp/isolated-home')
+  assert.equal(child['ANTHROPIC_API_KEY'], undefined)
+  assert.equal(child['ANTHROPIC_BASE_URL'], undefined)
 })
 
 test('compiled production files do not import the Agent SDK', () => {

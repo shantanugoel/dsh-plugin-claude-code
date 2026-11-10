@@ -4,8 +4,8 @@ Goal: build one dsh model plugin that uses a persistent official Claude Agent SD
 session, preserves native signed thinking across unchanged tool steps, and leaves
 all tool execution, sandbox rules, and approvals with dsh.
 
-Status: M1 is complete. The package installs, type-checks, tests, builds, and
-packs without Claude credentials. Production inference is refused. Start at M2.
+Status: M2 is complete. Production inference remains refused. The offline tests
+do not run the installed Claude binary. Start at M3.
 Do not mark later tasks complete from the direct-CLI measurement.
 
 ## Fixed requirements
@@ -53,19 +53,19 @@ production inference is possible while the spend guard is unavailable.
 
 ## M2. Implement request admission and the spend gate
 
-- [ ] Validate absolute session workspace and all supported request controls.
-- [ ] Build an explicit child environment allowlist. Reject auth, provider,
+- [x] Validate absolute session workspace and all supported request controls.
+- [x] Build an explicit child environment allowlist. Reject auth, provider,
   endpoint, and header overrides. Inspect effective credential-helper settings
   before running a command that could execute a helper.
-- [ ] Call the official auth-status command with the isolated configuration.
+- [x] Call the official auth-status command with the isolated configuration.
   Require a first-party subscription login. Keep tokens and account data private.
-- [ ] Implement `SpendGate`. Until verified enforcement exists, production returns
+- [x] Implement `SpendGate`. Until verified enforcement exists, production returns
   `BILLING_GUARD_UNAVAILABLE`. Test the zero-prompt refusal path.
-- [ ] Bind accepted policy evidence to the identity, scope, expiry, and execution
+- [x] Bind accepted policy evidence to the identity, scope, expiry, and execution
   interval. Reject a changed account or invalid proof.
-- [ ] Apply admission to every inference purpose, including session titles and
+- [x] Apply admission to every inference purpose, including session titles and
   summaries. Reject a purpose that has no supported isolated request mapping.
-- [ ] Keep real preflight failures non-retryable. Do not expose a paid-usage override.
+- [x] Keep real preflight failures non-retryable. Do not expose a paid-usage override.
 
 Completion: fake auth and spend combinations prove that no input reaches the
 native transport on a refusal. Record the remaining billing question and continue

@@ -89,6 +89,22 @@ npm also installed the SDK peer packages `zod@4.6.7`,
 `@anthropic-ai/sdk@1.7.0`, and `@modelcontextprotocol/sdk@1.32.2`. The plugin
 source does not import them.
 
+## Admission
+
+The plugin checks the request, an absolute workspace, settings files, and an
+allowlisted child environment before `claude auth status`. It accepts
+`loggedIn: true`, `authMethod: "claude.ai"`, and `apiProvider: "firstParty"`.
+It stores only a hash of `orgId` or `accountId`. It refuses `apiKeyHelper`,
+`awsAuthRefresh`, `gcpAuthRefresh`, and billing variables in a settings `env`
+block. The checked files are the user settings, `~/.claude.json`, the workspace
+project and local settings, and the platform managed settings file.
+
+Production registration has no workspace service yet. A request fails with
+`UNSUPPORTED_INPUT` before the auth command. Offline tests use a temporary
+workspace and a fake command runner. They do not execute the installed Claude
+binary. A valid test proof cannot change `ProductionSpendGate`. That gate
+returns `BILLING_GUARD_UNAVAILABLE`.
+
 ## Commands
 
 The engine range is Node.js `>=24.9.0`. The checks below ran on Node.js
