@@ -79,6 +79,9 @@ export class McpBridge {
 
   expect(callIds: readonly string[]): void {
     this.expected = [...callIds]
+    this.staged.clear()
+    this.delivered.clear()
+    this.released = false
   }
 
   /**
@@ -105,6 +108,14 @@ export class McpBridge {
       }
       this.delivered.add(callId)
       waiter.resolve(staged)
+    }
+    this.waiters.clear()
+  }
+
+  /** Reject parked handlers. This does not invent a tool result. */
+  cancel(message: string): void {
+    for (const waiter of this.waiters.values()) {
+      waiter.reject(pluginFailure('NATIVE_OUTCOME_UNKNOWN', message))
     }
     this.waiters.clear()
   }

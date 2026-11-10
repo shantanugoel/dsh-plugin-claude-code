@@ -5,9 +5,10 @@ session, preserves native signed thinking across unchanged tool steps, and leave
 all tool execution, sandbox rules, and approvals with dsh.
 
 Status: the scripted session can park tool calls and return dsh results by call
-id. The native launch plan is built and tested offline. The official SDK query
-is not started. Production inference remains refused. Continue with M4.
-Do not mark later tasks complete from the direct-CLI measurement.
+id. The native launch plan and the transcript checks are tested offline. The
+official SDK query is not started. Production inference remains refused.
+Continue with M5. Do not mark later tasks complete from the direct-CLI
+measurement.
 
 ## Fixed requirements
 
@@ -96,18 +97,18 @@ is the only component that performs the test operation.
 
 ## M4. Implement transcript checks, streaming, and replay state
 
-- [ ] Add canonical input comparison and immutable request snapshots.
-- [ ] Implement the pending-publication rule for the dsh-assigned assistant ID.
-- [ ] Check the complete earlier prefix and exact tool-result suffix before release.
-- [ ] Translate partial and completed events once, keyed by message ID and block
+- [x] Add canonical input comparison and immutable request snapshots.
+- [x] Implement the pending-publication rule for the dsh-assigned assistant ID.
+- [x] Check the complete earlier prefix and exact tool-result suffix before release.
+- [x] Translate partial and completed events once, keyed by message ID and block
   index. Detect the complete native response independently of the SDK query result.
-- [ ] Preserve empty thinking, signatures, opaque redacted thinking, and block order.
+- [x] Preserve empty thinking, signatures, opaque redacted thinking, and block order.
   Store the response-level replay envelope on successful finishes.
-- [ ] Capture complete native request evidence through supported diagnostics.
+- [x] Capture complete native request evidence through supported diagnostics.
   Reject truncated or redacted evidence as a retention proof.
-- [ ] Emit correct dsh text, reasoning, tool-call, usage, and terminal chunks.
+- [x] Emit correct dsh text, reasoning, tool-call, usage, and terminal chunks.
   Reject malformed arguments before tool publication.
-- [ ] Disable retries once input or results have crossed the native boundary.
+- [x] Disable retries once input or results have crossed the native boundary.
   Invalidate a generation after cancellation or uncertain delivery.
 
 Completion: the offline suite rejects dropped thinking, changed signatures,

@@ -10,17 +10,19 @@ import {
 } from '@deepseek-ai/dsh-llm'
 
 import type { AuthGuard, HomeSource } from './auth.js'
+import { canonicalJson, contentHash } from './canonical.js'
 import { requireAbsoluteWorkspace, type WorkspaceSource } from './context.js'
 import { withDeadline, type Deadlines } from './deadlines.js'
 import { pluginFailure } from './errors.js'
 import { McpBridge, mapToolNames } from './mcp-bridge.js'
+import { parseReplay, type ReplayV1 } from './replay.js'
 import { CLAUDE_CODE_SESSION_ROUTE, INFERENCE_SCOPE } from './route.js'
 import { buildSdkLaunchPlan } from './sdk-plan.js'
 import type { NativeRuntime } from './sdk-runtime.js'
 import type { LiveGeneration, SessionManager } from './session-manager.js'
 import type { SpendGate } from './spend-gate.js'
-import { readUntilStop, translateTurn } from './stream.js'
-import { latestUserText, trailingToolResults } from './transcript.js'
+import { isAbortError, readUntilStop, translateTurn } from './stream.js'
+import { admitTranscript, publicationFrom, requestHasReplay, type Admission } from './transcript.js'
 
 export interface AdapterDependencies {
   readonly runtime: NativeRuntime
@@ -35,6 +37,7 @@ export interface AdapterDependencies {
 }
 
 const SUPPORTED_BLOCK_TYPES = new Set(['text', 'reasoning', 'tool-call'])
+const AUXILIARY_PURPOSES = new Set(['title', 'summary'])
 
 /**
  * dsh adapter for route `claude-code-session`.
@@ -89,100 +92,192 @@ export class ClaudeCodeAdapter extends LlmAdapter {
 
   async *stream(options: GenerateOptions): AsyncIterable<StreamChunk> {
     this.assertRoute(options.provider)
-    throwIfAborted(options.signal)
+    if (options.signal?.aborted === true) {
+      if (options.sessionId !== undefined && options.purpose === undefined) {
+        const existing = this.dependencies.sessions.conversation(String(options.sessionId))
+        if (existing !== undefined) await this.invalidate(existing)
+      }
+      yield abortedFinish()
+      return
+    }
     assertSupportedRequest(options)
     if (options.model.trim() === '') {
       throw pluginFailure('UNSUPPORTED_INPUT', 'The model id is empty.')
     }
-    const workspace = requireAbsoluteWorkspace(this.dependencies.workspace.current())
-    const settingsFiles = this.dependencies.settingsFiles?.()
-    const acceptance = await this.dependencies.auth.check({
-      workspace,
-      home: this.dependencies.home.current(),
-      parentEnv: this.dependencies.parentEnv(),
-      ...(settingsFiles === undefined ? {} : { settingsFiles }),
-    })
-    const decision = await this.dependencies.spendGate.decide({
-      provider: options.provider,
-      model: options.model,
-      purpose: options.purpose ?? 'conversation',
-      identityBinding: acceptance.identityBinding,
-      scope: INFERENCE_SCOPE,
-    })
-    if (!decision.allowed) {
-      throw pluginFailure(
-        decision.code,
-        'No accepted spend guard can prevent a paid request. No model prompt was sent.',
-      )
-    }
-    yield* this.runAdmitted(options, workspace)
-  }
-
-  private async *runAdmitted(options: GenerateOptions, workspace: string): AsyncIterable<StreamChunk> {
     if (options.sessionId === undefined) {
       throw pluginFailure('UNSUPPORTED_INPUT', 'The request has no session id.')
     }
-    const key = `${String(options.sessionId)}:1`
-    let live = this.dependencies.sessions.get(key)
-    if (live?.phase === 'GENERATING' || live?.phase === 'STARTING') {
+    const sessionId = String(options.sessionId)
+    const workspace = requireAbsoluteWorkspace(this.dependencies.workspace.current(sessionId))
+    const auxiliary = options.purpose !== undefined
+    const admitKey = auxiliary
+      ? `aux:${sessionId}:${options.purpose ?? ''}:${contentHash(options.messages)}`
+      : `conversation:${sessionId}`
+    const existing = auxiliary ? undefined : this.dependencies.sessions.conversation(sessionId)
+    if (existing?.phase === 'GENERATING' || existing?.phase === 'STARTING') {
       throw pluginFailure('SESSION_BUSY', 'This native session already has an active stream.')
     }
+    this.dependencies.sessions.tryAdmit(admitKey)
+    try {
+      const settingsFiles = this.dependencies.settingsFiles?.()
+      const acceptance = await this.dependencies.auth.check({
+        workspace,
+        home: this.dependencies.home.current(),
+        parentEnv: this.dependencies.parentEnv(),
+        ...(settingsFiles === undefined ? {} : { settingsFiles }),
+      })
+      const decision = await this.dependencies.spendGate.decide({
+        provider: options.provider,
+        model: options.model,
+        purpose: options.purpose ?? 'conversation',
+        identityBinding: acceptance.identityBinding,
+        scope: INFERENCE_SCOPE,
+      })
+      if (!decision.allowed) {
+        throw pluginFailure(
+          decision.code,
+          'No accepted spend guard can prevent a paid request. No model prompt was sent.',
+        )
+      }
+      if (auxiliary) {
+        yield* this.runAuxiliary(options, workspace, admitKey)
+        return
+      }
+      yield* this.runAdmitted(options, workspace, sessionId)
+    } finally {
+      this.dependencies.sessions.endAdmit(admitKey)
+    }
+  }
+
+  private async *runAuxiliary(
+    options: GenerateOptions,
+    workspace: string,
+    key: string,
+  ): AsyncIterable<StreamChunk> {
+    const live = await this.ensureSession(undefined, key, options, workspace, true)
+    try {
+      const admission = admitTranscript({
+        messages: options.messages,
+        waitingForResults: false,
+        state: { committed: [], pending: undefined, dispatchedHash: undefined },
+      })
+      if (admission.kind !== 'first-user') {
+        throw pluginFailure('UNSUPPORTED_INPUT', 'An auxiliary request cannot continue a tool call.')
+      }
+      live.phase = 'GENERATING'
+      live.dispatchedHash = admission.requestHash
+      await live.native.sendUser({ text: admission.userText })
+      const chunks = await this.collectTurn(live, admission, options.signal)
+      live.phase = 'READY'
+      for (const chunk of chunks) yield chunk
+    } catch (error) {
+      if (isAbortError(error) || options.signal?.aborted === true) {
+        await this.invalidate(live)
+        yield abortedFinish()
+        return
+      }
+      await this.invalidate(live)
+      throw error
+    } finally {
+      if (live.phase !== 'INVALID') await this.dependencies.sessions.closeKey(key)
+    }
+  }
+
+  private async *runAdmitted(
+    options: GenerateOptions,
+    workspace: string,
+    sessionId: string,
+  ): AsyncIterable<StreamChunk> {
+    let live = this.dependencies.sessions.conversation(sessionId)
     if (live?.phase === 'INVALID' || live?.phase === 'CLOSED') {
       throw pluginFailure('REBASE_REQUIRED', 'The native generation is closed. Start a recorded new generation.')
     }
-    if (live !== undefined && (live.model !== options.model || live.workspace !== workspace)) {
-      throw pluginFailure('REBASE_REQUIRED', 'The model or workspace changed. Start a recorded new generation.')
-    }
-    if (live?.phase === 'WAITING_FOR_RESULTS') {
-      this.releaseResults(live, options)
-      await live.native.continueAfterResults()
-      live.phase = 'GENERATING'
-    } else {
-      live = await this.ensureSession(live, key, options, workspace)
-      live.phase = 'GENERATING'
-      await live.native.sendUser({ text: latestUserText(options.messages) })
-    }
-    let translated
-    try {
-      const events = await readUntilStop(live.iterator, live.deadlines.generationMs)
-      const tools = mapToolNames(options.tools ?? [])
-      translated = translateTurn(events, {
-      format: 'claude-session-v1',
-      generationId: '1',
-      model: options.model,
-      workspace,
-      toolNameMap: Object.fromEntries(tools.dshToNative),
-      nativeResponseBlocks: events,
-    })
-    } catch (error) {
-      live.phase = 'INVALID'
-      await live.native.close()
-      throw error
-    }
-    if (translated.pendingCalls.length > 0) {
-      live.bridge.expect(translated.pendingCalls.map((call) => call.id))
-      live.pendingCalls = translated.pendingCalls
-      live.phase = 'WAITING_FOR_RESULTS'
-    } else {
-      live.pendingCalls = []
-      live.phase = 'READY'
-    }
-    for (const chunk of translated.chunks) yield chunk
-  }
-
-  private releaseResults(live: LiveGeneration, options: GenerateOptions): void {
-    const suffix = trailingToolResults(options.messages)
-    if (suffix.endsWithUser) {
+    if (live === undefined && requestHasReplay(options.messages)) {
       throw pluginFailure(
-        'UNSUPPORTED_INPUT',
-        'A user message cannot enter a tool-result suffix.',
+        'REBASE_REQUIRED',
+        'Saved replay state has no live native process. Record a context import.',
       )
     }
-    live.bridge.stage(suffix.results.map((result) => ({
-      callId: result.callId,
-      text: result.text,
-      isError: result.isError,
-    })))
+    const prompt = systemPromptOf(options)
+    const tools = mapToolNames(options.tools ?? [])
+    const toolsCanonical = canonicalJson(tools.tools)
+    if (live !== undefined && (
+      live.model !== options.model
+      || live.workspace !== workspace
+      || live.systemPrompt !== prompt
+      || live.toolsCanonical !== toolsCanonical
+    )) {
+      throw pluginFailure('REBASE_REQUIRED', 'The model, workspace, prompt, or tools changed. Start a recorded new generation.')
+    }
+    const admission = admitTranscript({
+      messages: options.messages,
+      waitingForResults: live?.phase === 'WAITING_FOR_RESULTS',
+      state: {
+        committed: live?.committed ?? [],
+        pending: live?.pending,
+        dispatchedHash: live?.dispatchedHash,
+      },
+    })
+    const key = live?.key ?? `${sessionId}:1`
+    if (live === undefined) live = await this.ensureSession(undefined, key, options, workspace, false)
+    if (admission.kind === 'tool-results') {
+      live.bridge.stage(admission.results)
+      if (live.pending !== undefined) {
+        live.pending = { ...live.pending, boundMessageId: admission.boundMessageId }
+      }
+    }
+    live.phase = 'GENERATING'
+    live.dispatchedHash = admission.requestHash
+    try {
+      if (admission.kind === 'tool-results') await live.native.continueAfterResults()
+      else await live.native.sendUser({ text: admission.userText })
+      const chunks = await this.collectTurn(live, admission, options.signal)
+      if (live.pendingCalls.length > 0) live.phase = 'WAITING_FOR_RESULTS'
+      else live.phase = 'READY'
+      for (const chunk of chunks) yield chunk
+    } catch (error) {
+      if (isAbortError(error) || options.signal?.aborted === true) {
+        await this.invalidate(live)
+        yield abortedFinish()
+        return
+      }
+      await this.invalidate(live)
+      throw error
+    }
+  }
+
+  private async collectTurn(
+    live: LiveGeneration,
+    admission: Admission,
+    signal: AbortSignal | undefined,
+  ): Promise<StreamChunk[]> {
+    const events = await readUntilStop(live.iterator, live.deadlines.generationMs, signal)
+    const translated = translateTurn(events, {
+      nativeToDsh: live.nativeToDsh,
+      dshNames: live.dshNames,
+      allowedNativeTools: live.allowedNativeTools,
+    })
+    const replay = buildReplay(live, admission, translated.blocks, translated.nativeBlocks, translated.evidence, translated.auditAccepted)
+    const publication = publicationFrom({
+      blocks: translated.blocks,
+      nativeMessageIds: translated.nativeMessageIds,
+      replay,
+      callIds: translated.pendingCalls.map((call) => call.id),
+    })
+    live.committed = admission.committed
+    live.pending = publication
+    live.pendingCalls = translated.pendingCalls
+    if (translated.pendingCalls.length > 0) {
+      live.bridge.expect(translated.pendingCalls.map((call) => call.id))
+    }
+    return [
+      ...translated.chunks,
+      {
+        type: 'finish',
+        reason: translated.stopReason === 'tool_use' ? { kind: 'tool-calls' } : { kind: 'stop' },
+        replayState: { response: replay },
+      },
+    ]
   }
 
   private async ensureSession(
@@ -190,14 +285,16 @@ export class ClaudeCodeAdapter extends LlmAdapter {
     key: string,
     options: GenerateOptions,
     workspace: string,
+    auxiliary: boolean,
   ): Promise<LiveGeneration> {
     if (live !== undefined) return live
     const bridge = new McpBridge()
     const tools = mapToolNames(options.tools ?? [])
+    const prompt = systemPromptOf(options)
     const launch = buildSdkLaunchPlan({
       workspace,
       model: options.model,
-      systemPrompt: systemPromptOf(options),
+      systemPrompt: prompt,
       tools: tools.tools,
       parentEnv: this.dependencies.parentEnv(),
       home: this.dependencies.home.current(),
@@ -206,23 +303,41 @@ export class ClaudeCodeAdapter extends LlmAdapter {
     const native = await withDeadline(this.dependencies.runtime.start({
       workspace,
       model: options.model,
-      systemPrompt: systemPromptOf(options),
+      systemPrompt: prompt,
       launch,
       callTool: (callId) => bridge.wait(callId, this.dependencies.deadlines.resultWaitMs),
     }), this.dependencies.deadlines.initializationMs, 'INCOMPATIBLE_RUNTIME', 'The native session did not initialize before the deadline.')
     const created: LiveGeneration = {
       key,
+      sessionId: String(options.sessionId),
+      generationId: auxiliary ? 'aux' : '1',
+      auxiliary,
       phase: 'STARTING',
       native,
       bridge,
       iterator: native.events[Symbol.asyncIterator](),
       model: options.model,
       workspace,
+      systemPrompt: prompt,
+      toolsCanonical: canonicalJson(tools.tools),
+      toolNameMap: Object.fromEntries(tools.dshToNative),
+      nativeToDsh: tools.nativeToDsh,
+      dshNames: new Set(tools.dshToNative.keys()),
+      allowedNativeTools: new Set(launch.allowedToolNames),
       deadlines: this.dependencies.deadlines,
       pendingCalls: [],
+      committed: [],
+      pending: undefined,
+      dispatchedHash: undefined,
     }
     this.dependencies.sessions.insert(created)
     return created
+  }
+
+  private async invalidate(live: LiveGeneration): Promise<void> {
+    live.phase = 'INVALID'
+    live.bridge.cancel('The native session closed before the tool result was delivered.')
+    await live.native.close()
   }
 
   private assertRoute(provider: string): void {
@@ -247,9 +362,9 @@ function assertSupportedRequest(options: GenerateOptions): void {
   if (options.maxTokens !== undefined) refuseControl('maxTokens')
   if (options.reasoningEffort !== undefined) refuseControl('reasoningEffort')
   if (options.stop !== undefined && options.stop.length > 0) refuseControl('stop')
-  if (options.purpose !== undefined) {
-    throw pluginFailure('UNSUPPORTED_INPUT', 'This request purpose has no isolated mapping.')
-  }
+    if (options.purpose !== undefined && !AUXILIARY_PURPOSES.has(options.purpose)) {
+      throw pluginFailure('UNSUPPORTED_INPUT', 'This request purpose has no isolated mapping.')
+    }
   if (options.toolHistory !== undefined) {
     throw pluginFailure('UNSUPPORTED_INPUT', 'Tool history updates are not supported for this route.')
   }
@@ -289,6 +404,39 @@ function systemPromptOf(options: GenerateOptions): string {
 
 function refuseControl(name: string): never {
   throw pluginFailure('UNSUPPORTED_INPUT', `The request control "${name}" is not supported.`)
+}
+
+function abortedFinish(): StreamChunk {
+  const failure = pluginFailure(
+    'NATIVE_OUTCOME_UNKNOWN',
+    'The model request was aborted. No tool result was invented.',
+  )
+  return { type: 'finish', reason: { kind: 'aborted', failure: failure.failure } }
+}
+
+function buildReplay(
+  live: LiveGeneration,
+  admission: Admission,
+  blocks: readonly unknown[],
+  nativeBlocks: readonly unknown[],
+  evidence: unknown,
+  auditAccepted: boolean,
+): ReplayV1 {
+  return parseReplay({
+    format: 'claude-session-v1',
+    generationId: live.generationId,
+    cliSessionId: live.native.identity.cliSessionId,
+    cliVersion: live.native.identity.cliVersion,
+    sdkVersion: live.native.identity.sdkVersion,
+    model: live.model,
+    workspace: live.workspace,
+    requestPrefixHash: admission.requestHash,
+    projectedContentHash: contentHash(blocks),
+    nativeRequestRecord: auditAccepted ? evidence : null,
+    nativeResponseBlocks: nativeBlocks,
+    toolNameMap: live.toolNameMap,
+    retentionAudit: auditAccepted ? 'accepted' : 'unavailable',
+  })
 }
 
 function blockType(block: { readonly type?: unknown }): string {

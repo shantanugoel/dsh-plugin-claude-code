@@ -24,10 +24,23 @@ export interface NativeUserInput {
   readonly text: string
 }
 
+export interface NativeSessionIdentity {
+  readonly cliSessionId: string
+  readonly cliVersion: string
+  readonly sdkVersion: string
+}
+
 export type NativeBlockType = 'text' | 'reasoning' | 'tool-call' | 'redacted-thinking'
 
 export type NativeEvent =
-  | { readonly type: 'block-start'; readonly messageId: string; readonly index: number; readonly blockType: NativeBlockType }
+  | {
+    readonly type: 'block-start'
+    readonly messageId: string
+    readonly index: number
+    readonly blockType: NativeBlockType
+    readonly signature?: string
+    readonly redactedData?: string
+  }
   | { readonly type: 'text-delta'; readonly messageId: string; readonly index: number; readonly text: string }
   | { readonly type: 'reasoning-delta'; readonly messageId: string; readonly index: number; readonly text: string }
   | {
@@ -39,11 +52,26 @@ export type NativeEvent =
     readonly argumentsDelta: string
   }
   | { readonly type: 'block-stop'; readonly messageId: string; readonly index: number }
+  | {
+    readonly type: 'block-snapshot'
+    readonly messageId: string
+    readonly index: number
+    readonly blockType: NativeBlockType
+    readonly text?: string
+    readonly id?: string
+    readonly name?: string
+    readonly argumentsText?: string
+    readonly signature?: string
+    readonly redactedData?: string
+  }
   | { readonly type: 'usage'; readonly inputTokens: number; readonly outputTokens: number }
   | { readonly type: 'message-stop'; readonly messageId: string; readonly stopReason: 'end_turn' | 'tool_use' }
+  | { readonly type: 'native-tool-list'; readonly names: readonly string[] }
+  | { readonly type: 'request-evidence'; readonly record: unknown }
 
 export interface NativeSession {
   readonly events: AsyncIterable<NativeEvent>
+  readonly identity: NativeSessionIdentity
   sendUser(input: NativeUserInput): Promise<void>
   continueAfterResults(): Promise<void>
   close(): Promise<void>

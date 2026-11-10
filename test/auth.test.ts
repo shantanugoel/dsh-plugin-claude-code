@@ -124,8 +124,8 @@ test('auth and spend refusals do not start the native runtime', async () => {
   })
   const titleError = await refuse(titleAdapter.model, { ...textRequest(), purpose: 'title' } as GenerateOptions)
   assert.ok(titleError instanceof LlmError)
-  assert.equal(titleError.code, 'UNSUPPORTED_INPUT')
-  assert.equal(titleRunner.calls.length, 0)
+  assert.equal(titleError.code, 'BILLING_GUARD_UNAVAILABLE')
+  assert.equal(titleRunner.calls.length, 1)
   assert.equal(titled.starts.length, 0)
 })
 

@@ -17,6 +17,11 @@ export interface ScriptedTurn {
  * Production registration does not use this class.
  */
 export class ScriptedNativeSession implements NativeSession {
+  readonly identity = {
+    cliSessionId: 'scripted-session',
+    cliVersion: 'scripted',
+    sdkVersion: 'scripted',
+  }
   readonly inputs: NativeUserInput[] = []
   private readonly queue: NativeEvent[] = []
   private readonly waiters: Array<() => void> = []
@@ -63,7 +68,7 @@ export class ScriptedNativeSession implements NativeSession {
     if (turn === undefined) return
     for (const event of turn.events) this.emit(event)
     if (turn.invokeHandlers !== undefined && this.callTool !== undefined) {
-      void turn.invokeHandlers(this.callTool)
+      void turn.invokeHandlers(this.callTool).catch(() => undefined)
     }
   }
 

@@ -4,12 +4,12 @@ import { pluginFailure } from './errors.js'
 
 /** Current absolute workspace. The process directory is not a fallback. */
 export interface WorkspaceSource {
-  current(): string | undefined
+  current(sessionId?: string): string | undefined
 }
 
 /** Production source until the dsh workspace service is connected. */
 export class UnresolvedWorkspace implements WorkspaceSource {
-  current(): undefined {
+  current(_sessionId?: string): undefined {
     return undefined
   }
 }

@@ -115,6 +115,15 @@ workspace and a fake command runner. They do not execute the installed Claude
 binary. A valid test proof cannot change `ProductionSpendGate`. That gate
 returns `BILLING_GUARD_UNAVAILABLE`.
 
+The scripted transcript check compares the canonical earlier prefix, binds one
+dsh assistant id to the pending publication, and requires the stored replay
+envelope. Empty thinking text remains in the replay with its signature.
+Redacted thinking stays in `nativeResponseBlocks` and has no display text.
+A native request record is an audit success only when `status` is `complete`,
+`redacted` is false, `truncated` is false, and `body.messages` is a non-empty
+array that fits the storage bound. The scripted runtime supplies that record.
+This is not a live diagnostic capture.
+
 ## Commands
 
 The engine range is Node.js `>=24.9.0`. The checks below ran on Node.js

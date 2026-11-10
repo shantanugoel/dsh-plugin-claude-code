@@ -47,15 +47,35 @@ function toolEvents(calls: readonly { id: string; name: string; arguments: strin
   return events
 }
 
+function publishedAssistant(chunks: readonly StreamChunk[], id = 'assistant-1') {
+  const finish = chunks.at(-1)
+  const replayState = finish?.type === 'finish' ? finish.replayState : undefined
+  const content = chunks.flatMap((chunk) => chunk.type === 'block-end' ? [chunk.block] : [])
+  return {
+    role: 'assistant' as const,
+    id,
+    content,
+    source: {
+      kind: 'model' as const,
+      provider: 'claude-code-session',
+      model: 'claude-haiku-5-5',
+      ...(replayState === undefined ? {} : { replayState }),
+    },
+  }
+}
+
 function resultRequest(
+  chunks: readonly StreamChunk[],
   results: readonly { id: string; text: string; isError?: boolean }[],
   sessionId = 'session-1',
 ): GenerateOptions {
   const base = textRequest('hello', sessionId)
   return {
     ...base,
+    tools: [{ name: 'echo', description: 'Echo text.', parameters: { type: 'object' } }],
     messages: [
       ...base.messages,
+      publishedAssistant(chunks),
       ...results.map((result) => ({
         role: 'tool' as const,
         toolCallId: result.id,
@@ -102,7 +122,11 @@ test('tool calls stay on one scripted session and dsh supplies the only result',
     spendGate: new EvidenceSpendGate(proof(accepted.identityBinding), NOW),
     deadlines: { ...DEFAULT_DEADLINES, generationMs: 30, resultWaitMs: 5_000 },
   })
-  const first = await collect(model, textRequest())
+  const firstRequest = {
+    ...textRequest(),
+    tools: [{ name: 'echo', description: 'Echo text.', parameters: { type: 'object' as const } }],
+  }
+  const first = await collect(model, firstRequest)
   assert.deepEqual(toolIds(first), ['call-1', 'call-2'])
   const firstFinish = first.at(-1)
   assert.equal(firstFinish?.type, 'finish')
@@ -110,7 +134,7 @@ test('tool calls stay on one scripted session and dsh supplies the only result',
   await new Promise((resolve) => setTimeout(resolve, 40))
   assert.deepEqual(seen, ['start-1'])
   assert.equal(runtime.sessions.length, 1)
-  const second = await collect(model, resultRequest([
+  const second = await collect(model, resultRequest(first, [
     { id: 'call-1', text: 'alpha' },
     { id: 'call-2', text: 'beta', isError: true },
   ]))
@@ -136,9 +160,12 @@ test('a bad tool-result suffix releases nothing', async () => {
     runtime,
     spendGate: new EvidenceSpendGate(proof(accepted.identityBinding), NOW),
   })
-  await collect(model, textRequest('hello', 'session-2'))
+  const first = await collect(model, {
+    ...textRequest('hello', 'session-2'),
+    tools: [{ name: 'echo', description: 'Echo text.', parameters: { type: 'object' } }],
+  })
   await assert.rejects(
-    collect(model, resultRequest([{ id: 'call-2', text: 'nope' }], 'session-2')),
+    collect(model, resultRequest(first, [{ id: 'call-2', text: 'nope' }], 'session-2')),
     (error: unknown) => {
       assert.ok(error instanceof LlmError)
       assert.equal(error.code, 'TOOL_RESULT_MISMATCH')
@@ -158,8 +185,17 @@ test('a user message cannot enter a tool-result suffix', async () => {
     runtime,
     spendGate: new EvidenceSpendGate(proof(accepted.identityBinding), NOW),
   })
-  await collect(model, textRequest('hello', 'session-3'))
-  const request = textRequest('later', 'session-3')
+  const firstRequest = {
+    ...textRequest('hello', 'session-3'),
+    tools: [{ name: 'echo', description: 'Echo text.', parameters: { type: 'object' } }],
+  }
+  const first = await collect(model, firstRequest)
+  const request = resultRequest(first, [], 'session-3')
+  request.messages = [
+    ...firstRequest.messages,
+    publishedAssistant(first),
+    { role: 'user', content: [{ type: 'text', text: 'later' }] },
+  ] as GenerateOptions['messages']
   await assert.rejects(collect(model, request), (error: unknown) => {
     assert.ok(error instanceof LlmError)
     assert.equal(error.code, 'UNSUPPORTED_INPUT')
@@ -204,7 +240,10 @@ test('malformed tool arguments are not published', async () => {
     runtime,
     spendGate: new EvidenceSpendGate(proof(accepted.identityBinding), NOW),
   })
-  await assert.rejects(collect(model, textRequest('hello', 'session-4')), (error: unknown) => {
+  await assert.rejects(collect(model, {
+    ...textRequest('hello', 'session-4'),
+    tools: [{ name: 'echo', description: 'Echo text.', parameters: { type: 'object' } }],
+  }), (error: unknown) => {
     assert.ok(error instanceof LlmError)
     assert.equal(error.code, 'MALFORMED_RESPONSE')
     return true

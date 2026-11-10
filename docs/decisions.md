@@ -100,3 +100,14 @@ absent, so a live query would be a model request without a pre-inference block.
 The scripted runtime checks the plan and keeps the session open after a tool
 finish. A declaration check confirms the pinned SDK still names the options.
 That check is not a measurement that the CLI applies those options.
+
+## D8. Bind the dsh assistant id after publication
+
+Decision: the adapter stores the emitted blocks and the response replay
+envelope. The next request must contain that publication before a tool result
+is released. The dsh message id is bound from that request. A changed prefix
+returns `REBASE_REQUIRED`. A changed publication returns `REPLAY_STATE_INVALID`.
+
+Reason: the adapter does not allocate the next dsh assistant id. A local hash
+detects a difference. It does not repair a signature. The scripted tests use
+synthetic signatures. They do not show that Anthropic accepted a signature.
