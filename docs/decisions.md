@@ -158,3 +158,16 @@ This route leaves `toolUpdate` unset, so the runtime sends the current tool
 list and removes developer update messages before dispatch. Refusing the field
 stopped the first turn with `UNSUPPORTED_INPUT` before Claude started. A
 `developer` message is still refused.
+
+## D13. Accept the harness tool schema form
+
+Decision: `fromJSONSchema` must keep the declared fields. An omitted
+`additionalProperties`, `true`, and an empty schema are the same open object.
+An integer with no bounds is the safe integer range. A schema Zod cannot read
+returns `UNSUPPORTED_INPUT`.
+
+Reason: the desktop turn sent one tool, `run_code`. Its schema omits
+`additionalProperties`. Wrapping the shape in `z.object` adds
+`additionalProperties: false`, so the exact compare refused the turn before
+Claude started. The same compare accepts the 33 tool schemas recorded in local
+harness sessions on 2026-11-10. Those session files stay outside git.

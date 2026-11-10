@@ -1,6 +1,6 @@
 {
   "name": "dsh-plugin-claude-code",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "private": true,
   "description": "DeepSeek Harness model plugin for one persistent official Claude Agent SDK session per dsh generation.",
   "type": "module",

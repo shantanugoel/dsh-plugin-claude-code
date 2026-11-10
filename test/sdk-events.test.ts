@@ -38,7 +38,37 @@ test('a preserved tool schema survives the Zod conversion', () => {
     additionalProperties: false,
   })
   assert.equal(typeof shape['value'], 'object')
+  const harnessShape = zodShapeForTool({
+    type: 'object',
+    properties: {
+      code: { type: 'string' },
+      mode: { type: 'string', enum: ['workspace-write', 'danger-full-access'] },
+      limit: { type: 'integer' },
+      questions: {
+        type: 'array',
+        items: {
+          type: 'object',
+          additionalProperties: true,
+          properties: { id: { type: 'string' } },
+          required: ['id'],
+        },
+      },
+      args: { type: 'object', additionalProperties: true },
+    },
+    required: ['code'],
+  })
+  assert.equal(typeof harnessShape['code'], 'object')
+  assert.equal(typeof harnessShape['args'], 'object')
   assert.throws(() => zodShapeForTool({ type: 'string' }), (error: unknown) => {
+    assert.ok(error instanceof LlmError)
+    assert.equal(error.code, 'UNSUPPORTED_INPUT')
+    return true
+  })
+  assert.throws(() => zodShapeForTool({
+    type: 'object',
+    unevaluatedProperties: false,
+    properties: { value: { type: 'string' } },
+  }), (error: unknown) => {
     assert.ok(error instanceof LlmError)
     assert.equal(error.code, 'UNSUPPORTED_INPUT')
     return true
