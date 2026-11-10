@@ -15,6 +15,7 @@ import { withDeadline, type Deadlines } from './deadlines.js'
 import { pluginFailure } from './errors.js'
 import { McpBridge, mapToolNames } from './mcp-bridge.js'
 import { CLAUDE_CODE_SESSION_ROUTE, INFERENCE_SCOPE } from './route.js'
+import { buildSdkLaunchPlan } from './sdk-plan.js'
 import type { NativeRuntime } from './sdk-runtime.js'
 import type { LiveGeneration, SessionManager } from './session-manager.js'
 import type { SpendGate } from './spend-gate.js'
@@ -192,11 +193,21 @@ export class ClaudeCodeAdapter extends LlmAdapter {
   ): Promise<LiveGeneration> {
     if (live !== undefined) return live
     const bridge = new McpBridge()
-    mapToolNames(options.tools ?? [])
+    const tools = mapToolNames(options.tools ?? [])
+    const launch = buildSdkLaunchPlan({
+      workspace,
+      model: options.model,
+      systemPrompt: systemPromptOf(options),
+      tools: tools.tools,
+      parentEnv: this.dependencies.parentEnv(),
+      home: this.dependencies.home.current(),
+      resultWaitMs: this.dependencies.deadlines.resultWaitMs,
+    })
     const native = await withDeadline(this.dependencies.runtime.start({
       workspace,
       model: options.model,
-      systemPrompt: options.system ?? '',
+      systemPrompt: systemPromptOf(options),
+      launch,
       callTool: (callId) => bridge.wait(callId, this.dependencies.deadlines.resultWaitMs),
     }), this.dependencies.deadlines.initializationMs, 'INCOMPATIBLE_RUNTIME', 'The native session did not initialize before the deadline.')
     const created: LiveGeneration = {
@@ -260,6 +271,20 @@ function assertSupportedRequest(options: GenerateOptions): void {
       }
     }
   }
+}
+
+function systemPromptOf(options: GenerateOptions): string {
+  if (options.system !== undefined) return options.system
+  const system = options.messages.find((message) => message.role === 'system')
+  if (system === undefined) return ''
+  const parts: string[] = []
+  for (const block of system.content) {
+    if (block.type !== 'text' || typeof block.text !== 'string') {
+      throw pluginFailure('UNSUPPORTED_INPUT', 'The system message contains unsupported content.')
+    }
+    parts.push(block.text)
+  }
+  return parts.join('')
 }
 
 function refuseControl(name: string): never {

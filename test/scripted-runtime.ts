@@ -114,6 +114,7 @@ export class ScriptedNativeRuntime implements NativeRuntime {
       workspace: config.workspace,
       model: config.model,
       systemPrompt: config.systemPrompt,
+      ...(config.launch === undefined ? {} : { launch: config.launch }),
     })
     const session = new ScriptedNativeSession(this)
     session.bind(config)

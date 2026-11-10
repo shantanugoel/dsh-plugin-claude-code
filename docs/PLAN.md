@@ -5,8 +5,8 @@ session, preserves native signed thinking across unchanged tool steps, and leave
 all tool execution, sandbox rules, and approvals with dsh.
 
 Status: the scripted session can park tool calls and return dsh results by call
-id. The official SDK query is not started. Production inference remains refused.
-Continue with the remaining M3 SDK configuration, then M4.
+id. The native launch plan is built and tested offline. The official SDK query
+is not started. Production inference remains refused. Continue with M4.
 Do not mark later tasks complete from the direct-CLI measurement.
 
 ## Fixed requirements
@@ -74,11 +74,11 @@ M3 through M7 offline. Do not stop all implementation work at this blocker.
 
 ## M3. Implement persistent native sessions and the MCP bridge
 
-- [ ] Create one SDK query, one event consumer, and one input queue for each
+- [x] Create one SDK query, one event consumer, and one input queue for each
   session generation. A tool-call finish leaves them alive.
-- [ ] Configure exact workspace, custom dsh prompt, exact model, empty native
+- [x] Configure exact workspace, custom dsh prompt, exact model, empty native
   tools, explicit settings sources, partial events, and only the dsh MCP server.
-- [ ] Apply supported controls for advisor, compaction, background operations,
+- [x] Apply supported controls for advisor, compaction, background operations,
   connectors, extra instructions, and unwanted context discovery.
 - [x] Build a reversible tool-name map and a lossless JSON Schema mapping.
   Detect collisions and refuse unsupported schema forms.

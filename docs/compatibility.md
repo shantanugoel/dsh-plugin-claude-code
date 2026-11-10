@@ -85,6 +85,16 @@ applies that option. Production source does not import this package. `start`
 on the production runtime fails with `BILLING_GUARD_UNAVAILABLE` before a
 process can start.
 
+`src/sdk-plan.ts` builds the offline launch plan for one query, one event
+consumer, and one streaming input queue. A tool-call finish leaves that query
+open. The plan sets the session workspace, the dsh prompt as a custom system
+prompt, the exact model, an empty built-in tool list, an empty settings-source
+list, partial messages, and only the `dsh` MCP server. It also sets the
+declared advisor, compaction, background-task, connector, skill, workflow, and
+prompt-suggestion controls. The plan omits a fallback model and omits resume.
+`scripts/verify-sdk-surface.mjs` checks that the pinned declaration file still
+contains the option names this plan uses. That check does not start a process.
+
 npm also installed the SDK peer packages `zod@4.6.7`,
 `@anthropic-ai/sdk@1.7.0`, and `@modelcontextprotocol/sdk@1.32.2`. The plugin
 source does not import them.

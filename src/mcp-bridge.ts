@@ -1,3 +1,4 @@
+import { canonicalJson } from './canonical.js'
 import { pluginFailure } from './errors.js'
 import type { NativeToolResult } from './sdk-runtime.js'
 
@@ -177,13 +178,6 @@ function assertJsonValue(value: unknown): void {
     return
   }
   throw pluginFailure('UNSUPPORTED_INPUT', 'A tool schema contains a value that is not JSON.')
-}
-
-function canonicalJson(value: unknown): string {
-  if (value === null || typeof value !== 'object') return JSON.stringify(value)
-  if (Array.isArray(value)) return `[${value.map((item) => canonicalJson(item)).join(',')}]`
-  const entries = Object.entries(value).sort(([left], [right]) => left < right ? -1 : left > right ? 1 : 0)
-  return `{${entries.map(([key, child]) => `${JSON.stringify(key)}:${canonicalJson(child)}`).join(',')}}`
 }
 
 function sameCallOrder(expected: readonly string[], actual: readonly string[]): boolean {

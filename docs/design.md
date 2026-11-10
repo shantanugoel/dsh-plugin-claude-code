@@ -1,7 +1,8 @@
 # Claude subscription adapter design
 
-Status: the repository has an offline package. No plugin was installed in a dsh
-profile. Production inference is refused. The saved request test passed.
+Status: the repository has an offline package. The launch plan describes one
+persistent native session and does not start it. No plugin was installed in a
+dsh profile. Production inference is refused. The saved request test passed.
 The complete plugin has not passed an integration test.
 
 Use one stateful `LlmAdapter` with one persistent official Claude Agent SDK

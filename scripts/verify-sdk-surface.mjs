@@ -27,6 +27,11 @@ const required = [
   'streamInput(',
   'supportedModels(',
   'prompt: string | AsyncIterable<SDKUserMessage>',
+  'verbatimPrompts',
+  'autoCompactEnabled',
+  'disableClaudeAiConnectors',
+  'disableBundledSkills',
+  'CLAUDE_CODE_DISABLE_BACKGROUND_TASKS',
 ]
 const missing = required.filter((needle) => !declaration.includes(needle))
 if (missing.length > 0) {

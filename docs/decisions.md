@@ -88,3 +88,15 @@ while the spend guard is unavailable.
 
 Evidence: [compatibility.md](compatibility.md), reviewed 2026-11-10. The saved
 CLI measurement remains Claude Code 2.1.319. That pair is not certified.
+
+## D7. Build the SDK launch plan without starting the SDK
+
+Decision: the offline launch plan describes one query, one event consumer, and
+one streaming input queue. Production `start` still returns
+`BILLING_GUARD_UNAVAILABLE` before it imports the SDK.
+
+Reason: M3 needs the session configuration on record. The spend guard is still
+absent, so a live query would be a model request without a pre-inference block.
+The scripted runtime checks the plan and keeps the session open after a tool
+finish. A declaration check confirms the pinned SDK still names the options.
+That check is not a measurement that the CLI applies those options.

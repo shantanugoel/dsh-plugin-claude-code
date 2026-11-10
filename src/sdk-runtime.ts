@@ -1,4 +1,5 @@
 import { pluginFailure } from './errors.js'
+import type { SdkLaunchPlan } from './sdk-plan.js'
 
 /**
  * Internal native session boundary. Tests inject a scripted implementation.
@@ -15,6 +16,7 @@ export interface NativeSessionConfig {
   readonly workspace: string
   readonly model: string
   readonly systemPrompt: string
+  readonly launch?: SdkLaunchPlan
   readonly callTool?: (callId: string) => Promise<NativeToolResult>
 }
 
