@@ -23,6 +23,9 @@ interface OfficialMessage {
   readonly session_id?: string
   readonly claude_code_version?: string
   readonly tools?: readonly string[]
+  readonly stop_reason?: string | null
+  readonly is_error?: boolean
+  readonly usage?: { readonly input_tokens?: number; readonly output_tokens?: number }
   readonly message?: {
     readonly id?: string
     readonly content?: readonly Record<string, unknown>[]
@@ -117,14 +120,49 @@ async function consume(
   queue: EventQueue,
   identity: { cliSessionId: string; cliVersion: string },
 ): Promise<void> {
+  let stopSent = false
+  let messageId = 'assistant'
   for await (const message of query) {
     if (message.type === 'system' && message.subtype === 'init') {
       if (typeof message.session_id === 'string') identity.cliSessionId = message.session_id
       if (typeof message.claude_code_version === 'string') identity.cliVersion = message.claude_code_version
       if (message.tools !== undefined) queue.push({ type: 'native-tool-list', names: message.tools })
+      continue
     }
     if (message.type === 'assistant' && message.message !== undefined) {
-      for (const event of eventsFromAssistant(message.message)) queue.push(event)
+      if (stopSent) stopSent = false
+      let hasTool = false
+      for (const event of eventsFromAssistant(message.message)) {
+        if (event.type === 'message-stop') {
+          stopSent = true
+          messageId = event.messageId
+        }
+        if (event.type === 'block-snapshot') {
+          messageId = event.messageId
+          if (event.blockType === 'tool-call') hasTool = true
+        }
+        queue.push(event)
+      }
+      if (hasTool && !stopSent) {
+        queue.push({ type: 'message-stop', messageId, stopReason: 'tool_use' })
+        stopSent = true
+      }
+      continue
+    }
+    if (message.type === 'result') {
+      if (message.subtype !== undefined && message.subtype !== 'success') {
+        queue.fail(pluginFailure('MALFORMED_RESPONSE', 'The native session reported a turn error.'))
+        return
+      }
+      if (stopSent) continue
+      const inputTokens = message.usage?.input_tokens
+      const outputTokens = message.usage?.output_tokens
+      if (typeof inputTokens === 'number' && typeof outputTokens === 'number') {
+        queue.push({ type: 'usage', inputTokens, outputTokens })
+      }
+      const stopReason = message.stop_reason === 'tool_use' ? 'tool_use' : 'end_turn'
+      queue.push({ type: 'message-stop', messageId, stopReason })
+      stopSent = true
     }
   }
   queue.close()
