@@ -76,6 +76,22 @@ test('an allowed test gate sends the user text only to the scripted runtime', as
   })
 })
 
+test('folded tool history does not block the prompt', async () => {
+  const runtime = new ScriptedNativeRuntime()
+  runtime.enqueue(textTurn('ok'))
+  const model = adapter(runtime, new ProductionSpendGate())
+  const request = textRequest()
+  request.toolHistory = {
+    tools: [{ name: 'old', description: 'old tool', parameters: { type: 'object' } }],
+    updates: [],
+  }
+  const chunks = []
+  for await (const chunk of model.stream(request)) chunks.push(chunk)
+  assert.equal(chunks.at(-1)?.type, 'finish')
+  assert.equal(runtime.starts.length, 1)
+  assert.deepEqual(runtime.inputs, [{ text: 'hello' }])
+})
+
 test('unsupported controls and content refuse before the runtime starts', async () => {
   const runtime = new ScriptedNativeRuntime()
   const model = adapter(runtime, new ProductionSpendGate())

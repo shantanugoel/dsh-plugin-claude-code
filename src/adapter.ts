@@ -420,9 +420,9 @@ function assertSupportedRequest(options: GenerateOptions): void {
     if (options.purpose !== undefined && !AUXILIARY_PURPOSES.has(options.purpose)) {
       throw pluginFailure('UNSUPPORTED_INPUT', 'This request purpose has no isolated mapping.')
     }
-  if (options.toolHistory !== undefined) {
-    throw pluginFailure('UNSUPPORTED_INPUT', 'Tool history updates are not supported for this route.')
-  }
+  // The agent loop always sends toolHistory. This route does not declare
+  // toolUpdate, so the runtime already removed developer updates and sent the
+  // current tool list. A developer message still fails below.
   const hasSystemMessage = options.messages.some((message) => message.role === 'system')
   if (options.system !== undefined && hasSystemMessage) {
     throw pluginFailure(

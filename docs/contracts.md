@@ -50,9 +50,11 @@ Read `GenerateOptions.sessionId`, `messages`, `system`, `tools`, model,
 reasoning controls, limits, and abort signal. Reject an unsupported control
 before dispatch. Do not silently ignore sampling fields or stop sequences.
 
-Do not declare `systemPromptUpdate` or `toolUpdate` support for the first release.
-The generation uses one fixed prompt and tool list. Reject or rebase an update
-instead of claiming native mid-conversation support.
+Do not declare `systemPromptUpdate` or `toolUpdate` for the first release.
+The generation uses one fixed prompt and the current tool list. The agent loop
+always sends `toolHistory`. The runtime removes developer tool updates before
+dispatch. The adapter ignores `toolHistory`. A `developer` message still returns
+`UNSUPPORTED_INPUT`.
 
 Map finishes to the minimum version's actual union:
 

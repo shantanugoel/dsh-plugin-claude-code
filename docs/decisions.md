@@ -147,3 +147,14 @@ Decision: do not commit `dist/`. Do not add a `prepare` or `postinstall` script.
 Reason: the user installed `github:shantanugoel/dsh-plugin-claude-code` and
 asked to remove the compiled tree. The desktop lock resolved commit `3a48335`,
 which contained `dist/`. Later commits leave that directory out of git.
+
+## D12. Ignore folded tool history
+
+Decision: do not refuse `GenerateOptions.toolHistory`. Do not declare
+`toolUpdate`.
+
+Reason: the desktop agent loop sends `Session.toolHistory()` on every request.
+This route leaves `toolUpdate` unset, so the runtime sends the current tool
+list and removes developer update messages before dispatch. Refusing the field
+stopped the first turn with `UNSUPPORTED_INPUT` before Claude started. A
+`developer` message is still refused.
