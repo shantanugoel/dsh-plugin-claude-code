@@ -10,9 +10,7 @@ no usable model until discovery supplies one. The offline suite does not start
 Claude. Live acceptance has not run.
 The minimum target is dsh 0.2.2-rc.1. No later dsh release was published on
 2026-11-10. Later releases need their own compatibility checks. The git tree
-includes `dist/index.js`. A desktop install from the GitHub URL copies that
-file. It does not compile the package. Update the installed plugin after each
-release commit.
+does not include `dist/`.
 
 The plugin will keep one native Claude session for each dsh session generation.
 An MCP handler will wait while dsh runs each tool. The same native session will
