@@ -111,3 +111,17 @@ returns `REBASE_REQUIRED`. A changed publication returns `REPLAY_STATE_INVALID`.
 Reason: the adapter does not allocate the next dsh assistant id. A local hash
 detects a difference. It does not repair a signature. The scripted tests use
 synthetic signatures. They do not show that Anthropic accepted a signature.
+
+## D9. Use the session header as the workspace
+
+Decision: the native session workspace is `Session.header.cwd` from dsh
+0.2.2-rc.1. A context import uses `surfaceOp: replace` on the conversation
+after the leading system message, then `sessions.flush`. An open tool call
+returns `REBASE_REQUIRED` before the log changes.
+
+Reason: the header field is the session's absolute creation workspace. The
+filesystem `cwd` is a shared relative-path base. The agent inbox is private,
+so a mid-tool user message is refused. `sessions.flush` reports whether a
+durability listener ran. A true result is required before the native
+generation closes. This measurement uses the published packages. It does not
+show a live Claude process.

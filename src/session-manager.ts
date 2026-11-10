@@ -45,6 +45,7 @@ export interface LiveGeneration {
 export class SessionManager {
   private readonly live = new Map<string, LiveGeneration>()
   private readonly admitting = new Set<string>()
+  private readonly generationCount = new Map<string, number>()
 
   size(): number {
     return this.live.size
@@ -63,6 +64,13 @@ export class SessionManager {
 
   insert(session: LiveGeneration): void {
     this.live.set(session.key, session)
+  }
+
+  /** Allocate the next generation id for one dsh session. */
+  nextGeneration(sessionId: string): string {
+    const next = (this.generationCount.get(sessionId) ?? 0) + 1
+    this.generationCount.set(sessionId, next)
+    return String(next)
   }
 
   /** Reserve one key before the first await. A second admission fails closed. */
@@ -97,6 +105,7 @@ export class SessionManager {
     this.live.clear()
     await Promise.all(sessions.map(async (session) => {
       session.phase = 'CLOSED'
+      session.bridge.cancel('The native session closed before the tool result was delivered.')
       await withDeadline(
         session.native.close(),
         session.deadlines.closeMs,

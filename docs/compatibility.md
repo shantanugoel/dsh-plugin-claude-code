@@ -38,8 +38,19 @@ and `@deepseek-ai/dsh-package-manifest` are development dependencies. The
 published `dsh-llm` declarations import them. This plugin does not call them
 at runtime.
 
-The agent-loop, session, compaction, and system-prompt packages were inspected.
-They are not dependencies yet.
+`@deepseek-ai/dsh-session` and `@deepseek-ai/dsh-compaction` are peer
+dependencies at `0.2.2-rc.1`. The plugin reads `Session.header.cwd`. That field
+is immutable creation metadata. The filesystem service `cwd` is a process-wide
+base for relative paths. It is not the session workspace. No published method
+in this version changes `header.cwd` after `sessions.create()`. A missing header
+path fails. A different filesystem base fails with `REBASE_REQUIRED`.
+
+The context import uses `session.append` with `surfaceOp: replace`,
+`toolPairingBalancedBefore`, `toolPairingBalancedAfter`, and
+`sessions.flush`. Flush must return true, which requires a `session/flush`
+listener. The raw log keeps the replaced events. The agent inbox is private in
+this version. A user message inside a tool-result suffix is refused. The
+plugin does not move that message.
 
 ## Public imports
 
@@ -47,7 +58,9 @@ The plugin source imports these public names:
 
 | Module | Names |
 | --- | --- |
-| `@deepseek-ai/dsh-llm` | `LlmAdapter`, `LlmError`, `resolveRetryPolicy`, `GenerateOptions`, `LlmModelInfo`, `LlmProviderInfo`, `LlmResolvedModelInfo`, `ResolvedRetryPolicy`, `StreamChunk` |
+| `@deepseek-ai/dsh-llm` | `LlmAdapter`, `LlmError`, `resolveRetryPolicy`, `GenerateOptions`, `LlmModelInfo`, `LlmProviderInfo`, `LlmResolvedModelInfo`, `ResolvedRetryPolicy`, `StreamChunk`, `createUserMessage`, `ToolCallId` |
+| `@deepseek-ai/dsh-session` | `SessionId`, `SessionStore`, `Session` |
+| `@deepseek-ai/dsh-compaction` | `toolPairingBalancedBefore`, `toolPairingBalancedAfter` |
 | `@deepseek-ai/cordis` | `Context` |
 | `@deepseek-ai/schemastery` | default schema constructor |
 
@@ -109,11 +122,12 @@ It stores only a hash of `orgId` or `accountId`. It refuses `apiKeyHelper`,
 block. The checked files are the user settings, `~/.claude.json`, the workspace
 project and local settings, and the platform managed settings file.
 
-Production registration has no workspace service yet. A request fails with
-`UNSUPPORTED_INPUT` before the auth command. Offline tests use a temporary
-workspace and a fake command runner. They do not execute the installed Claude
-binary. A valid test proof cannot change `ProductionSpendGate`. That gate
-returns `BILLING_GUARD_UNAVAILABLE`.
+Production registration reads `Session.header.cwd` through `ctx.sessions`.
+A missing path fails with `UNSUPPORTED_INPUT` before the auth command. Offline
+tests use a temporary workspace or a real in-memory session store, and a fake
+command runner. They do not execute the installed Claude binary. A valid test
+proof cannot change `ProductionSpendGate`. That gate returns
+`BILLING_GUARD_UNAVAILABLE`.
 
 The scripted transcript check compares the canonical earlier prefix, binds one
 dsh assistant id to the pending publication, and requires the stored replay

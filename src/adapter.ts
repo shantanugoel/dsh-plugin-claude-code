@@ -15,11 +15,14 @@ import { requireAbsoluteWorkspace, type WorkspaceSource } from './context.js'
 import { withDeadline, type Deadlines } from './deadlines.js'
 import { pluginFailure } from './errors.js'
 import { McpBridge, mapToolNames } from './mcp-bridge.js'
+import { recordContextImport as appendContextImport } from './rebase.js'
 import { parseReplay, type ReplayV1 } from './replay.js'
 import { CLAUDE_CODE_SESSION_ROUTE, INFERENCE_SCOPE } from './route.js'
 import { buildSdkLaunchPlan } from './sdk-plan.js'
 import type { NativeRuntime } from './sdk-runtime.js'
 import type { LiveGeneration, SessionManager } from './session-manager.js'
+import type { Session, SessionStore } from '@deepseek-ai/dsh-session'
+
 import type { SpendGate } from './spend-gate.js'
 import { isAbortError, readUntilStop, translateTurn } from './stream.js'
 import { admitTranscript, publicationFrom, requestHasReplay, type Admission } from './transcript.js'
@@ -37,6 +40,7 @@ export interface AdapterDependencies {
 }
 
 const SUPPORTED_BLOCK_TYPES = new Set(['text', 'reasoning', 'tool-call'])
+const SUPPORTED_ROLES = new Set(['system', 'user', 'assistant', 'tool'])
 const AUXILIARY_PURPOSES = new Set(['title', 'summary'])
 
 /**
@@ -88,6 +92,21 @@ export class ClaudeCodeAdapter extends LlmAdapter {
 
   closeOwnedSessions(): Promise<void> {
     return this.dependencies.sessions.closeOwned()
+  }
+
+  /**
+   * Record one full context import, then close the live native generation.
+   * An open tool call refuses the import before the session log changes.
+   */
+  async recordContextImport(session: Session, sessions: Pick<SessionStore, 'flush'>): Promise<string> {
+    const sessionId = String(session.id)
+    const live = this.dependencies.sessions.conversation(sessionId)
+    if (live?.phase === 'WAITING_FOR_RESULTS' || live?.phase === 'GENERATING' || live?.phase === 'STARTING') {
+      throw pluginFailure('REBASE_REQUIRED', 'The context import needs a balanced tool boundary.')
+    }
+    const imported = await appendContextImport({ session, sessions })
+    if (live !== undefined) await this.dependencies.sessions.closeKey(live.key)
+    return imported.text
   }
 
   async *stream(options: GenerateOptions): AsyncIterable<StreamChunk> {
@@ -218,8 +237,9 @@ export class ClaudeCodeAdapter extends LlmAdapter {
         dispatchedHash: live?.dispatchedHash,
       },
     })
-    const key = live?.key ?? `${sessionId}:1`
-    if (live === undefined) live = await this.ensureSession(undefined, key, options, workspace, false)
+    const generationId = live?.generationId ?? this.dependencies.sessions.nextGeneration(sessionId)
+    const key = live?.key ?? `${sessionId}:${generationId}`
+    if (live === undefined) live = await this.ensureSession(undefined, key, options, workspace, false, generationId)
     if (admission.kind === 'tool-results') {
       live.bridge.stage(admission.results)
       if (live.pending !== undefined) {
@@ -286,6 +306,7 @@ export class ClaudeCodeAdapter extends LlmAdapter {
     options: GenerateOptions,
     workspace: string,
     auxiliary: boolean,
+    generationId = 'aux',
   ): Promise<LiveGeneration> {
     if (live !== undefined) return live
     const bridge = new McpBridge()
@@ -310,7 +331,7 @@ export class ClaudeCodeAdapter extends LlmAdapter {
     const created: LiveGeneration = {
       key,
       sessionId: String(options.sessionId),
-      generationId: auxiliary ? 'aux' : '1',
+      generationId,
       auxiliary,
       phase: 'STARTING',
       native,
@@ -376,8 +397,8 @@ function assertSupportedRequest(options: GenerateOptions): void {
     )
   }
   for (const message of options.messages) {
-    if (message.role === 'developer') {
-      throw pluginFailure('UNSUPPORTED_INPUT', 'A developer message is not supported for this route.')
+    if (!SUPPORTED_ROLES.has(message.role)) {
+      throw pluginFailure('UNSUPPORTED_INPUT', `The message role "${message.role}" is not supported.`)
     }
     for (const block of message.content) {
       const type = blockType(block)

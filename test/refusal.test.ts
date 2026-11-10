@@ -96,6 +96,13 @@ test('unsupported controls and content refuse before the runtime starts', async 
     assert.equal(error.code, 'UNSUPPORTED_INPUT')
     return true
   })
+  const unknownRole = textRequest()
+  unknownRole.messages = [{ role: 'developer', content: [{ type: 'text', text: 'note' }] }] as unknown as typeof unknownRole.messages
+  await assert.rejects(model.stream(unknownRole)[Symbol.asyncIterator]().next(), (error: unknown) => {
+    assert.ok(error instanceof LlmError)
+    assert.equal(error.code, 'UNSUPPORTED_INPUT')
+    return true
+  })
   assert.equal(runtime.starts.length, 0)
 })
 

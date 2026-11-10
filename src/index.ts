@@ -4,7 +4,7 @@ import z from '@deepseek-ai/schemastery'
 import { ClaudeCodeAdapter } from './adapter.js'
 import { AuthGuard, ProcessHome } from './auth.js'
 import { createProcessAuthRunner } from './auth-process.js'
-import { UnresolvedWorkspace } from './context.js'
+import { SessionHeaderWorkspace } from './context.js'
 import { DEFAULT_DEADLINES } from './deadlines.js'
 import { CLAUDE_CODE_SESSION_ROUTE } from './route.js'
 import { SdkNativeRuntime } from './sdk-runtime.js'
@@ -12,7 +12,7 @@ import { SessionManager } from './session-manager.js'
 import { ProductionSpendGate } from './spend-gate.js'
 
 export const name = 'dsh-plugin-claude-code'
-export const inject = ['llm']
+export const inject = ['llm', 'sessions']
 
 /**
  * User settings. The object is empty. There is no paid-usage switch and no
@@ -34,7 +34,7 @@ export function apply(ctx: Context, _config: PluginConfig): void {
     runtime: new SdkNativeRuntime(),
     spendGate: new ProductionSpendGate(),
     sessions,
-    workspace: new UnresolvedWorkspace(),
+    workspace: new SessionHeaderWorkspace(ctx.sessions),
     auth: new AuthGuard(createProcessAuthRunner()),
     home: new ProcessHome(),
     parentEnv: () => process.env,

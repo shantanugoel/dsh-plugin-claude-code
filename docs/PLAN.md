@@ -5,10 +5,9 @@ session, preserves native signed thinking across unchanged tool steps, and leave
 all tool execution, sandbox rules, and approvals with dsh.
 
 Status: the scripted session can park tool calls and return dsh results by call
-id. The native launch plan and the transcript checks are tested offline. The
-official SDK query is not started. Production inference remains refused.
-Continue with M5. Do not mark later tasks complete from the direct-CLI
-measurement.
+id. Transcript checks and dsh session imports are tested offline. The official
+SDK query is not started. Production inference remains refused. Continue with
+M6. Do not mark later tasks complete from the direct-CLI measurement.
 
 ## Fixed requirements
 
@@ -117,22 +116,22 @@ outcomes. A complete synthetic dsh loop performs two steps on one fake session.
 
 ## M5. Integrate dsh lifecycle, workspace, and context replacement
 
-- [ ] Find the authoritative current workspace service and test it with two
+- [x] Find the authoritative current workspace service and test it with two
   sessions. Do not infer it from the dsh server's process directory.
-- [ ] Gate workspace, model, prompt, and tool changes before continuation.
+- [x] Gate workspace, model, prompt, and tool changes before continuation.
   Return `REBASE_REQUIRED` until the recorded reset operation is implemented.
-- [ ] Find the supported dsh session replacement, compaction, and flush APIs.
+- [x] Find the supported dsh session replacement, compaction, and flush APIs.
   Confirm their persistence lifecycle; do not invent a hook name.
-- [ ] Implement a plugin service/command that records a full context import at
+- [x] Implement a plugin service/command that records a full context import at
   a balanced boundary before a new generation starts.
-- [ ] Keep completed historical tool outcomes as quoted context. Remove active
+- [x] Keep completed historical tool outcomes as quoted context. Remove active
   call IDs and old thinking from the new context, while retaining the original log.
-- [ ] Reject partial compaction that leaves a signed tail bound to a changed prefix.
-- [ ] Queue user input through dsh's supported inbox behavior. Reject an unexpected
+- [x] Reject partial compaction that leaves a signed tail bound to a changed prefix.
+- [x] Queue user input through dsh's supported inbox behavior. Reject an unexpected
   mid-tool context insertion instead of moving it inside `stream()`.
-- [ ] On restore, reject an old generation with no live native process. Offer the
+- [x] On restore, reject an old generation with no live native process. Offer the
   recorded context-import operation. Native resume is outside this milestone.
-- [ ] Dispose only owned sessions/processes on abort, agent disposal, or plugin unload.
+- [x] Dispose only owned sessions/processes on abort, agent disposal, or plugin unload.
 
 Completion: minimum-version dsh tests cover edit, compaction, workspace change,
 model change, tool change, plugin unload, export/restore, and missing replay state.
