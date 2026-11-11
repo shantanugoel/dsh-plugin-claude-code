@@ -285,7 +285,7 @@ files, including `dist/`, and no private files. An isolated dsh profile refused
 the first install with `ERR_PNPM_GIT_DEP_PREPARE_NOT_ALLOWED` and the exact
 `allowBuilds` key. The second run built and installed the plugin, and
 `--dump-config` listed the `claude-code-session` entry. The documented `github:`
-spec check is pending the push of this change.
+spec install then passed on 2026-11-11 in a fresh isolated DSH_HOME profile.
 
 ## D21. Recover a closed native generation with a recorded textual import
 

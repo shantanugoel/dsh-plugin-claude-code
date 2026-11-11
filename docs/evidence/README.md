@@ -39,8 +39,9 @@ plugin inside dsh and did not measure signed thinking retention.
 dependency install, a packed archive, and an install into an isolated dsh
 profile. The first profile install failed with the build-approval error. After
 the profile allowed the exact key, the plugin installed and `--dump-config`
-listed the route. The documented GitHub spec check was pending the push at the
-time of the record. The record contains no account data and no raw capture.
+listed the route. The documented GitHub spec install then passed on 2026-11-11
+in a fresh isolated DSH_HOME profile. The record contains no account data and no
+raw capture.
 
 ## Limits
 

@@ -181,10 +181,20 @@ Install checks on 2026-11-11 used macOS arm64, Node.js `v26.13.0`, npm
   `dsh-plugin-claude-code` layer and the `claude-code-session` entry. The entry
   is not disabled.
 
-The documented `github:shantanugoel/dsh-plugin-claude-code` install check is
-pending the push of the issue #1 change. These checks sent no model prompt. They
-did not use the user's desktop profile. The desktop app build-approval flow was
-not run.
+The documented `github:shantanugoel/dsh-plugin-claude-code` install check passed
+on 2026-11-11 after the push of commit `dd952ad`. A fresh isolated `DSH_HOME`
+profile from the shipped `headless` template fetched the GitHub archive. The
+first run failed with `ERR_PNPM_GIT_DEP_PREPARE_NOT_ALLOWED` and printed the
+exact `allowBuilds` key, pinned to the fetched commit. The second run, after the
+profile added that key, built the package with `prepare` and installed it. The
+profile dependency stays `github:shantanugoel/dsh-plugin-claude-code`.
+`--dump-config` listed the `claude-code-session` entry. The installed package
+contained `README.md`, `cordis.patch.yml`, `package.json`, and `dist/` only.
+
+These checks sent no model prompt. They did not use the user's desktop profile.
+The desktop app build-approval flow was not run. `--dump-config` composes the
+route but does not run plugin JavaScript; the first task in issue #13 covers the
+module import.
 
 ## Commands
 

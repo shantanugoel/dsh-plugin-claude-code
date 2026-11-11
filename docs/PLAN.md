@@ -18,8 +18,8 @@ profile for this change.
 Status, 2026-11-11 (issue #1): the Git install distribution builds `dist/` at
 install time through the `prepare` script (D20). An isolated dsh profile
 installed the plugin from a local Git spec, and `--dump-config` listed the
-`claude-code-session` entry. The documented GitHub spec check is pending the
-push.
+`claude-code-session` entry. The documented GitHub spec install passed on
+2026-11-11 in a fresh isolated DSH_HOME profile.
 
 Status, 2026-11-11 (issue #2): M5 adds generation rollover recovery. The offline
 suite has 90 tests. A closed or absent native generation recovers with one
@@ -182,11 +182,11 @@ fork.
   Confirm that installing a plugin alone neither selects it nor spends quota.
   An in-memory load on the published LLM and session services passes. A dsh
   profile install was not run.
-- [ ] Make the Git-dependency distribution build the package at install time.
+- [x] Make the Git-dependency distribution build the package at install time.
   `prepare` runs `npm run build`; the Git tree stays without `dist/`. Tested on
-  2026-11-11 with an npm Git dependency install, a packed archive, and an
-  isolated dsh profile install from a local Git spec. The documented GitHub spec
-  check is pending the push.
+  2026-11-11 with an npm Git dependency install, a packed archive, an isolated
+  dsh profile install from a local Git spec, and the documented GitHub spec in a
+  fresh isolated DSH_HOME profile.
 - [ ] Check the packed file list. Include compiled code, bundle patch, README,
   and the selected license. Exclude credentials, private logs, tests with real
   data, caches, and development artifacts. `pack:check` passed on 2026-11-10.

@@ -7,7 +7,8 @@
     "dist_in_git": false,
     "prepare_script": "npm run build",
     "packed_files": 55,
-    "packed_dist_files": 52
+    "packed_dist_files": 52,
+    "github_spec": "github:shantanugoel/dsh-plugin-claude-code"
   },
   "versions": {
     "package": "dsh-plugin-claude-code 0.2.0",
@@ -16,7 +17,8 @@
     "npm": "11.20.0",
     "pnpm_bundled_with_dsh": "11.28.5",
     "platform": "macOS arm64",
-    "git_spec": "git+file://<worktree>#issue-1-install"
+    "git_spec": "git+file://<worktree>#issue-1-install",
+    "github_spec_resolved_commit": "dd952ad9b1200ca7c13a5254ab8e3c363a2215e2"
   },
   "checks": [
     {
@@ -48,11 +50,22 @@
       "method": "DSH_HOME=<temporary> dsh --profile acceptance --dump-config",
       "result": "pass",
       "details": "The composed tree has a dsh-plugin-claude-code layer and the claude-code-session entry. The entry is not disabled."
+    },
+    {
+      "id": "I06",
+      "method": "Fresh isolated DSH_HOME. Create the shipped headless profile with --dump-config. Run dsh plugin --profile headless add github:shantanugoel/dsh-plugin-claude-code.",
+      "result": "pass (two documented steps)",
+      "details": "The first run exited 1 with ERR_PNPM_GIT_DEP_PREPARE_NOT_ALLOWED. It printed the exact allowBuilds key for the fetched GitHub archive, pinned to commit dd952ad9b1200ca7c13a5254ab8e3c363a2215e2. After the profile pnpm-workspace.yaml contained that key, the second run fetched the archive, ran the prepare build (npm install and tsc -p tsconfig.build.json) in the fetched copy, and installed the plugin. The profile dependency is github:shantanugoel/dsh-plugin-claude-code. The installed package has README.md, cordis.patch.yml, package.json, and dist/ only."
     }
   ],
   "github_spec_check": {
-    "status": "pending",
-    "reason": "The issue #1 commit was not pushed at the time of these checks."
+    "status": "pass",
+    "spec": "github:shantanugoel/dsh-plugin-claude-code",
+    "resolved_commit": "dd952ad9b1200ca7c13a5254ab8e3c363a2215e2",
+    "profile": "headless, created from the shipped template in a fresh isolated DSH_HOME",
+    "first_attempt": "exit 1, ERR_PNPM_GIT_DEP_PREPARE_NOT_ALLOWED, allowBuilds key printed for the codeload archive pinned to the commit",
+    "second_attempt": "exit 0, prepare and tsc ran in the fetched archive, plugin installed",
+    "dump_config": "the composed tree contains the dsh-plugin-claude-code layer and the enabled claude-code-session entry"
   },
   "no_model_prompt_sent": true,
   "desktop_profile_used": false,
@@ -65,8 +78,8 @@
     "After the profile allows that key, the plugin installs and the composed profile lists the route."
   ],
   "not_proven": [
-    "The documented github:shantanugoel/dsh-plugin-claude-code spec; the push is pending.",
     "The desktop app build-approval flow; it was not run.",
+    "The plugin module import and route use during a boot; --dump-config composes the route but does not run plugin JavaScript. The first task in issue #13 covers it.",
     "A live model turn through the installed plugin; this issue sends no model prompt."
   ]
 }

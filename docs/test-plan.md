@@ -7,7 +7,7 @@ synthetic data and the scripted runtime, and 90 tests pass. The dsh 0.2.2-rc.1
 LLM service, session store, and compaction balance functions are loaded in that
 suite. The real dsh LLM runtime is mounted for file and image projection tests.
 The agent loop is not driven. No offline command starts the installed Claude
-binary. The distribution checks I01 to I05 also passed on 2026-11-11.
+binary. The distribution checks I01 to I06 also passed on 2026-11-11.
 
 Rows O43 to O52 cover generation recovery with a recorded textual import. They
 are offline tests. No live model request measured the rollover, and the tests
@@ -130,9 +130,9 @@ decision.
 | I05 | `dsh --profile <isolated> --dump-config` | The composed tree contains the `dsh-plugin-claude-code` layer and the enabled `claude-code-session` entry |
 | I06 | Clean `dsh plugin --profile <isolated> add github:shantanugoel/dsh-plugin-claude-code` after the push | The result is the same as I03 to I05 with the documented GitHub spec |
 
-I01 to I05 passed on 2026-11-11. I06 is pending the push. The reviewed summary
-is [install-2026-11-11.json](evidence/install-2026-11-11.json). These checks
-sent no model prompt and did not use the user's desktop profile.
+I01 to I06 passed on 2026-11-11. The reviewed summary is
+[install-2026-11-11.json](evidence/install-2026-11-11.json). These checks sent
+no model prompt and did not use the user's desktop profile.
 
 ## dsh integration tests
 
