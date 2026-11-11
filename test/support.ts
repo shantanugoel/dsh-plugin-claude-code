@@ -11,7 +11,7 @@ import type {
 import { ClaudeCodeAdapter } from '../src/adapter.js'
 import type { DiscoveredModel } from '../src/model-discovery.js'
 import { DEFAULT_DEADLINES, type Deadlines } from '../src/deadlines.js'
-import { AuthGuard, type AuthCommand, type AuthCommandResult } from '../src/auth.js'
+import { AuthGuard, type AuthCommand, type AuthCommandResult, type AuthGuardOptions } from '../src/auth.js'
 import type { SessionOriginSource, WorkspaceSource } from '../src/context.js'
 import type { ImageAttachmentReader } from '../src/images.js'
 import { SessionManager } from '../src/session-manager.js'
@@ -100,8 +100,10 @@ export function makeAdapter(input: {
   readonly deadlines?: Deadlines
   readonly configuration?: { current(): number }
   readonly catalog?: readonly DiscoveredModel[]
+  readonly authOptions?: AuthGuardOptions
 }): {
   readonly model: ClaudeCodeAdapter
+  readonly sessions: SessionManager
   readonly runner: RecordingRunner
   readonly home: string
   readonly workspace: string
@@ -110,13 +112,14 @@ export function makeAdapter(input: {
   const home = mkdtempSync(join(tmpdir(), 'dsh-claude-home-'))
   const workspace = mkdtempSync(join(tmpdir(), 'dsh-claude-ws-'))
   const settingsFiles = input.settingsFiles ?? []
+  const sessions = new SessionManager()
   const model = new ClaudeCodeAdapter({
     runtime: input.runtime,
     spendGate: input.spendGate,
-    sessions: new SessionManager(),
+    sessions,
     workspace: input.workspace ?? { current: () => workspace },
     ...(input.sessionOrigin === undefined ? {} : { sessionOrigin: input.sessionOrigin }),
-    auth: new AuthGuard(runner),
+    auth: new AuthGuard(runner, 'claude', input.authOptions),
     home: { current: () => home },
     parentEnv: () => input.parentEnv ?? {
       PATH: '/usr/bin',
@@ -130,5 +133,5 @@ export function makeAdapter(input: {
     ...(input.configuration === undefined ? {} : { configuration: input.configuration }),
     ...(input.catalog === undefined ? {} : { catalog: input.catalog }),
   })
-  return { model, runner, home, workspace }
+  return { model, sessions, runner, home, workspace }
 }

@@ -19,6 +19,11 @@ Status, 2026-11-11: M10 maps native turn errors to stable dsh codes and reports
 a `max_tokens` stop as a truncated finish. The offline suite has 117 tests after
 this change merged. No live provider error was measured.
 
+Status, 2026-11-11: M11 closes the native process of a disposed dsh session and
+caches one accepted auth check for 60 seconds. The offline suite has 146 tests
+after this change. The tests use the real dsh session store and a fake auth
+runner. No live Claude process or live auth command was measured.
+
 Status, 2026-11-11 (issue #1): the Git install distribution builds `dist/` at
 install time through the `prepare` script (D20). An isolated dsh profile
 installed the plugin from a local Git spec, and `--dump-config` listed the
@@ -348,3 +353,25 @@ Complete milestones in order unless independent offline work can proceed safely.
 Update checked tasks only after their completion criteria pass. Keep evidence
 dates and versions with each claim. Run only tests needed for the changed area,
 then the milestone's required checks. Keep this plan consistent with the code.
+
+## M11. Session disposal cleanup and auth-check cache
+
+Status on 2026-11-11: offline work is complete. No live process cleanup and no
+live auth command was measured.
+
+- [x] Listen for the dsh `session/disposed` event in the plugin entry.
+- [x] Close only the conversation generation of the disposed session through
+  the bounded close.
+- [x] Keep the plugin-unload path that closes every owned process.
+- [x] Keep an auxiliary call and a different session open.
+- [x] Add the accepted-auth cache with the documented scope and short interval.
+- [x] Keep the settings safety check and the first-party subscription check on a
+  cold cache or a changed scope.
+- [x] Do not cache a refusal.
+- [x] Add offline tests O67 to O69.
+- [ ] Measure a live session disposal and a live auth cache hit through an
+  installed dsh profile.
+
+Completion: one dsh session disposal releases exactly its native process, plugin
+unload releases every owned process, and one accepted auth check covers a short
+interval without a new command.

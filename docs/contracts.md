@@ -206,6 +206,11 @@ also binds its absolute workspace path. A workspace is not a session identity.
 An auxiliary request uses a separate key with its request purpose and unique
 call ID; it can never release a conversation's pending tool results.
 
+Listen for the dsh `session/disposed` event. Close the conversation generations
+of the disposed session through the bounded `closeKey` path. Do not close an
+auxiliary call or a different session. A disposal with no live generation is a
+no-op. The plugin-unload effect closes every owned process.
+
 | State | Accepted operation | Next state |
 | --- | --- | --- |
 | `NEW` | Validate configuration, auth, and spend policy | `STARTING` or `INVALID` |
@@ -216,6 +221,7 @@ call ID; it can never release a conversation's pending tool results.
 | `GENERATING` | Receive a completed final response | `READY` |
 | `WAITING_FOR_RESULTS` | Validate the full dsh result batch and release it | `GENERATING` |
 | Any live state | Abort, divergence, timeout, unknown outcome, or process loss | `INVALID` |
+| Any live state | dsh disposes the owning session | `CLOSED` |
 | `INVALID` | A conversation request with new content recovers one new generation | `CLOSED`, then `STARTING` |
 | `INVALID` | Plugin unload or no further request | `CLOSED` |
 
@@ -420,6 +426,14 @@ Filter the environment and reject credential helpers before running an auth
 command that could execute one. Use only the official CLI for login status.
 Account IDs are private; store a local identity binding, not credentials.
 
+`AuthGuard` caches one accepted result for a short interval. The default is 60
+seconds. The cache scope contains the executable, the home, the workspace, each
+settings file's modification time and size, and the allowlisted child
+environment values. The settings safety check runs on every call. A refusal is
+not cached. A caller can supply an expected account binding: a cache hit is used
+only for that binding, and a different result returns `AUTH_ROUTE_REFUSED`. The
+first-party subscription check runs when the cache is cold or its scope changed.
+
 `SpendGate` returns one of:
 
 ```ts
@@ -486,6 +500,9 @@ send a fabricated tool result to make the SDK stop. Close gracefully, then end
 only owned child processes after a bounded deadline. A watchdog must reap the
 process even if the async event iterator is blocked. Plugin unload waits for
 cleanup, disposes the registration, and leaves dsh's durable outcomes intact.
+One dsh session disposal closes only its matching conversation generation. A
+close that exceeds its deadline returns `NATIVE_OUTCOME_UNKNOWN`. The dsh event
+dispatcher contains and logs a listener rejection.
 
 Do not expose account IDs, signatures, request bodies, or auth output in ordinary
 logs. Native signatures belong in protected session replay data. Private audit

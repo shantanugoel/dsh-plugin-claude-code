@@ -70,6 +70,17 @@ export class SessionManager {
     return undefined
   }
 
+  /**
+   * Close every conversation generation of one disposed dsh session.
+   * An auxiliary call stays open: it has its own key and its own close path.
+   */
+  async closeConversation(sessionId: string): Promise<void> {
+    const matches = [...this.live.values()].filter(
+      (session) => !session.auxiliary && session.sessionId === sessionId,
+    )
+    await Promise.all(matches.map((session) => this.closeKey(session.key)))
+  }
+
   insert(session: LiveGeneration): void {
     this.live.set(session.key, session)
   }

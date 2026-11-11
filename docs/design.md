@@ -2,8 +2,9 @@
 
 Status: on 2026-11-11 the plugin supports text and image input, image-bearing
 tool results, and file attachments through dsh projection. The offline suite
-covers these paths and the native turn-error mapping. A direct official-SDK
-probe read a synthetic word through a user image and an MCP tool-result image.
+covers these paths, the native turn-error mapping, session disposal cleanup, and
+the auth acceptance cache. A direct official-SDK probe read a synthetic word
+through a user image and an MCP tool-result image.
 That probe did not run the plugin in a dsh profile. No plugin was installed in a
 dsh profile for this change. Production inference is refused. The complete
 plugin has not passed a live dsh integration test.
@@ -92,6 +93,12 @@ alive across many streams.
 Identify a process with `(dsh session ID, generation ID)`. Allow only one active
 stream for that pair. Do not use a workspace path or the last active session as
 the identity. Keep auxiliary calls in separate processes and separate records.
+
+Listen for the dsh `session/disposed` event. Close the conversation generations
+of that exact session with the bounded close. A different session stays open.
+An auxiliary call also stays open: it has its own key and its own stream close.
+Plugin unload closes every owned process. The session ID and the generation ID
+in the key prevent a wrong process close.
 
 Before each continuation, compare the complete frozen request with the stored
 expected dsh transcript. Check the system text, ordered tools and schemas, exact
@@ -364,6 +371,15 @@ and `apiProvider: "firstParty"`. Refuse unknown fields or values that prevent a
 clear decision. Never accept Console login or an environment token as a fallback.
 The official CLI documents this status command.
 [CLI reference](https://code.claude.com/docs/en/cli-reference)
+
+Cache one accepted auth result for 60 seconds. The cache scope contains the
+executable, the home, the workspace, each settings file's modification time and
+size, and the allowlisted environment values. Run the settings safety check on
+every call, also on a cache hit. Do not cache a refusal. The plugin cannot read
+the current account binding without the auth command. The short interval bounds
+an unnoticed login change. A caller can give the account binding that it
+requires. A cache hit is valid only for that binding, and a different result
+returns `AUTH_ROUTE_REFUSED`.
 
 The account must also have paid usage credits disabled before the first request,
 and they must remain disabled throughout the session. Anthropic states that

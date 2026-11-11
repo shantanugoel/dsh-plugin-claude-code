@@ -50,6 +50,10 @@ export function apply(ctx: Context, _config: PluginConfig): void {
   })
   ctx.llm.registerAdapter([CLAUDE_CODE_SESSION_ROUTE], adapter)
   ctx.llm.registerConfigurableProviders([blockedRouteDescriptor()])
+  // A deleted dsh session releases its exact conversation generation. The
+  // listener returns the bounded close promise; dsh contains and logs a
+  // rejection. An auxiliary call and another session are not affected.
+  ctx.on('session/disposed', (session) => adapter.closeSession(String(session.id)))
   ctx.effect(() => () => {
     adapter.closeOwnedSessions()
   }, 'claude-code-session.close')

@@ -2,8 +2,8 @@
 
 Use three test layers. Keep the result of each layer separate.
 
-Offline status on 2026-11-11: the Node suite covers rows O01 through O66 with
-synthetic data and the scripted runtime, and 135 tests pass. The dsh 0.2.2-rc.1
+Offline status on 2026-11-11: the Node suite covers rows O01 through O69 with
+synthetic data and the scripted runtime, and 146 tests pass. The dsh 0.2.2-rc.1
 LLM service, session store, and compaction balance functions are loaded in that
 suite. The real dsh LLM runtime is mounted for file and image projection tests
 and for the native error finish test. The agent loop is not driven. No offline
@@ -14,10 +14,11 @@ Rows O43 to O52 cover generation recovery with a recorded textual import. Rows
 O53 to O57 cover native turn-error mapping and truncated answers. Rows O58 to
 O61 cover a fixed-configuration change with the recorded-import mechanism. Rows
 O62 to O66 cover the context-capacity cache and the flat-text compaction summary
-import. They are offline tests. No live model request measured the rollover, a
-provider error, a configuration change, a live token meter, or a live dsh
-compaction, and the tests claim no signed-thinking retention across any rollover
-or import.
+import. Rows O67 to O69 cover session-disposal cleanup and the auth acceptance
+cache. They are offline tests. No live model request measured the rollover, a
+provider error, a configuration change, a live token meter, a live dsh
+compaction, a session disposal, or a live auth command, and the tests claim no
+signed-thinking retention across any rollover or import.
 
 A separate live probe on 2026-11-11 used the official SDK 0.3.322 and Claude
 Code 2.1.319. It read one synthetic image from a user message and one synthetic
@@ -129,6 +130,9 @@ result delivery, opened session, close request, and remaining child handle.
 | O64 | A `compaction` auxiliary call with system, user, assistant thinking, tool-call, tool-result, and image history | One fresh native session; flat text rows; no thinking text, signature, tool-call ID, or image bytes; instruction last; no dsh tools; `maxTokens` maps to the output cap; the live conversation session is untouched |
 | O65 | A conversation turn after a compaction auxiliary call | The original native session takes the next turn; no second native start |
 | O66 | Accepted-looking request evidence on a compaction auxiliary turn | `retentionAudit` is `unavailable` and `nativeRequestRecord` is null |
+| O67 | Two dsh sessions with live native processes; dispose one session | Only the disposed session's process closes; the other process stays live; plugin unload closes all owned processes |
+| O68 | A session disposal while a session-title auxiliary call is pending | The conversation process closes; the auxiliary process stays live until its own stream settles |
+| O69 | Two accepted auth checks in one scope, a refusal, and a changed scope or interval | One auth command for the accepted pair; a changed settings file state, home, workspace, executable, environment, binding, or interval runs it again; a refusal is not cached |
 
 Use independent expected response data for thinking tests. A comparison that
 derives both expected and actual data from the altered request cannot detect a
@@ -170,7 +174,8 @@ Required checks:
   one recorded new generation, and the import record stays in the replay data.
 - Context replacement uses real surface coordinates and persistence flushes.
   The old events remain available in the raw log.
-- Session disposal and plugin removal close the exact owned native sessions.
+- Session disposal closes the exact owned native session; plugin removal closes
+  every owned process; an auxiliary call and another session stay open.
 - A native turn error becomes a terminal dsh `error` finish with its mapped
   code, so the real `agent/request-error` waterfall receives the code.
 - `LlmRuntime.resolveModelInfo` accepts the reported context capacity before and

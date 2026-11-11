@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { EventEmitter } from 'node:events'
-import { mkdtempSync, writeFileSync } from 'node:fs'
+import { mkdtempSync, utimesSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { Readable } from 'node:stream'
@@ -12,8 +12,11 @@ import { LlmError, type GenerateOptions } from '@deepseek-ai/dsh-llm'
 import { runAuthProcess, type SpawnLike } from '../src/auth-process.js'
 import {
   assertSettingsSafe,
+  AuthGuard,
   buildChildEnvironment,
+  DEFAULT_AUTH_CACHE_MS,
   interpretAuthStatus,
+  type AuthCheck,
 } from '../src/auth.js'
 import { UnresolvedWorkspace } from '../src/context.js'
 import { Config } from '../src/index.js'
@@ -26,7 +29,7 @@ import {
 } from '../src/spend-gate.js'
 import { inputText, textRequest, textTurn } from './request.js'
 import { ScriptedNativeRuntime } from './scripted-runtime.js'
-import { RecordingRunner, SYNTHETIC_AUTH_STATUS, makeAdapter } from './support.js'
+import { acceptedRunner, RecordingRunner, SYNTHETIC_AUTH_STATUS, makeAdapter } from './support.js'
 
 const NOW = new Date('2026-11-10T00:00:00.000Z')
 
@@ -221,4 +224,160 @@ test('the auth process runner does not use a shell', async () => {
 test('the settings schema has no paid-usage switch', () => {
   const output = Config({}) as Record<string, unknown>
   assert.equal(Object.hasOwn(output, 'allowPaidUsage'), false)
+})
+
+
+function cacheInput(overrides: Partial<AuthCheck> = {}): AuthCheck {
+  const home = mkdtempSync(join(tmpdir(), 'dsh-auth-home-'))
+  const workspace = mkdtempSync(join(tmpdir(), 'dsh-auth-ws-'))
+  return {
+    workspace,
+    home,
+    parentEnv: { PATH: '/usr/bin', LANG: 'C', HOME: home },
+    settingsFiles: [],
+    ...overrides,
+  }
+}
+
+test('an accepted auth check is cached for the same scope', async () => {
+  const runner = acceptedRunner()
+  const guard = new AuthGuard(runner, 'claude', { now: () => 1_000, ttlMs: DEFAULT_AUTH_CACHE_MS })
+  const input = cacheInput()
+  const first = await guard.check(input)
+  const second = await guard.check(input)
+  assert.equal(runner.calls.length, 1)
+  assert.deepEqual(second, first)
+  assert.equal(first.identityBinding.length > 0, true)
+})
+
+test('the auth cache expires after its interval', async () => {
+  const runner = acceptedRunner()
+  let now = 1_000
+  const guard = new AuthGuard(runner, 'claude', { now: () => now, ttlMs: DEFAULT_AUTH_CACHE_MS })
+  const input = cacheInput()
+  await guard.check(input)
+  now += DEFAULT_AUTH_CACHE_MS - 1
+  await guard.check(input)
+  assert.equal(runner.calls.length, 1)
+  now += 1
+  await guard.check(input)
+  assert.equal(runner.calls.length, 2)
+})
+
+test('a changed home, workspace, or allowlisted environment runs the auth command again', async () => {
+  const runner = acceptedRunner()
+  const guard = new AuthGuard(runner, 'claude', { now: () => 1_000, ttlMs: DEFAULT_AUTH_CACHE_MS })
+  const input = cacheInput()
+  await guard.check(input)
+  await guard.check({ ...input, home: mkdtempSync(join(tmpdir(), 'dsh-auth-home-')) })
+  assert.equal(runner.calls.length, 2)
+  await guard.check({ ...input, workspace: mkdtempSync(join(tmpdir(), 'dsh-auth-ws-')) })
+  assert.equal(runner.calls.length, 3)
+  await guard.check({ ...input, parentEnv: { PATH: '/usr/local/bin' } })
+  assert.equal(runner.calls.length, 4)
+})
+
+test('a changed settings file mtime or size runs the auth command again', async () => {
+  const directory = mkdtempSync(join(tmpdir(), 'dsh-auth-settings-'))
+  const settings = join(directory, 'settings.json')
+  writeFileSync(settings, '{}')
+  const runner = acceptedRunner()
+  const guard = new AuthGuard(runner, 'claude', { now: () => 1_000, ttlMs: DEFAULT_AUTH_CACHE_MS })
+  const input = cacheInput({ settingsFiles: [settings] })
+  await guard.check(input)
+  writeFileSync(settings, '{"value":1}')
+  await guard.check(input)
+  assert.equal(runner.calls.length, 2)
+  utimesSync(settings, new Date(5_000), new Date(5_000))
+  await guard.check(input)
+  assert.equal(runner.calls.length, 3)
+})
+
+test('a refused auth status is not cached', async () => {
+  const runner = new RecordingRunner({
+    stdout: JSON.stringify({
+      loggedIn: true,
+      authMethod: 'api_key',
+      apiProvider: 'firstParty',
+      orgId: 'org-synthetic',
+    }),
+    exitCode: 0,
+  })
+  const guard = new AuthGuard(runner, 'claude', { now: () => 1_000, ttlMs: DEFAULT_AUTH_CACHE_MS })
+  const input = cacheInput()
+  for (const attempt of [1, 2]) {
+    await assert.rejects(guard.check(input), (error: unknown) => {
+      assert.ok(error instanceof LlmError)
+      assert.equal(error.code, 'AUTH_ROUTE_REFUSED')
+      return true
+    }, `refusal ${attempt}`)
+  }
+  assert.equal(runner.calls.length, 2)
+})
+
+test('an expected account binding is required for a cache hit and for the result', async () => {
+  const runner = acceptedRunner()
+  const accepted = interpretAuthStatus({ stdout: SYNTHETIC_AUTH_STATUS, exitCode: 0 })
+  const guard = new AuthGuard(runner, 'claude', { now: () => 1_000, ttlMs: DEFAULT_AUTH_CACHE_MS })
+  const input = cacheInput()
+  const first = await guard.check({ ...input, expectedIdentityBinding: accepted.identityBinding })
+  await guard.check({ ...input, expectedIdentityBinding: accepted.identityBinding })
+  assert.equal(runner.calls.length, 1)
+  assert.equal(first.identityBinding, accepted.identityBinding)
+  await assert.rejects(
+    guard.check({ ...input, expectedIdentityBinding: 'different-binding' }),
+    (error: unknown) => {
+      assert.ok(error instanceof LlmError)
+      assert.equal(error.code, 'AUTH_ROUTE_REFUSED')
+      return true
+    },
+  )
+  assert.equal(runner.calls.length, 2)
+})
+
+test('two streams in one auth scope run one auth command', async () => {
+  const runtime = new ScriptedNativeRuntime()
+  runtime.enqueue(textTurn('one'))
+  runtime.enqueue(textTurn('two', 'm2'))
+  const accepted = interpretAuthStatus({ stdout: SYNTHETIC_AUTH_STATUS, exitCode: 0 })
+  const runner = acceptedRunner()
+  const { model } = makeAdapter({
+    runtime,
+    spendGate: new EvidenceSpendGate(proof(accepted.identityBinding), NOW),
+    runner,
+  })
+  const collect = async (request: GenerateOptions): Promise<unknown[]> => {
+    const chunks: unknown[] = []
+    for await (const chunk of model.stream(request)) chunks.push(chunk)
+    return chunks
+  }
+  await collect(textRequest('first', 'auth-scope-1'))
+  await collect(textRequest('second', 'auth-scope-2'))
+  assert.equal(runner.calls.length, 1)
+  assert.equal(runtime.starts.length, 2)
+})
+
+test('a refused auth status runs the command again on the next stream', async () => {
+  const runtime = new ScriptedNativeRuntime()
+  const runner = new RecordingRunner({
+    stdout: JSON.stringify({
+      loggedIn: true,
+      authMethod: 'api_key',
+      apiProvider: 'firstParty',
+      orgId: 'org-synthetic',
+    }),
+    exitCode: 0,
+  })
+  const { model } = makeAdapter({
+    runtime,
+    spendGate: new EvidenceSpendGate(proof('ignored'), NOW),
+    runner,
+  })
+  for (const attempt of [1, 2]) {
+    const error = await refuse(model, textRequest('hello', `auth-refuse-${attempt}`))
+    assert.ok(error instanceof LlmError)
+    assert.equal(error.code, 'AUTH_ROUTE_REFUSED')
+  }
+  assert.equal(runner.calls.length, 2)
+  assert.equal(runtime.starts.length, 0)
 })

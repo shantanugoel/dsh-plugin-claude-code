@@ -195,6 +195,14 @@ export class ClaudeCodeAdapter extends LlmAdapter {
   }
 
   /**
+   * Close the conversation generation of one disposed dsh session.
+   * A matching auxiliary call is not closed here. Its own stream closes it.
+   */
+  closeSession(sessionId: string): Promise<void> {
+    return this.dependencies.sessions.closeConversation(sessionId)
+  }
+
+  /**
    * Record one full context import, then close the live native generation.
    * An open tool call refuses the import before the session log changes.
    */

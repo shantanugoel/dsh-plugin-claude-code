@@ -478,3 +478,46 @@ installation with a clear message and `nothing was installed`. The same changed
 requirement on an installed copy caused `dsh: skipping profile bundle
 "dsh-plugin-claude-code"` at startup. A real later dsh release was not run
 because none exists.
+
+## D27. Close the native process when dsh disposes a session
+
+Decision: listen for the dsh `session/disposed` event in `src/index.ts`. Close
+only the conversation generations of the disposed session through the existing
+bounded `closeKey` path. Do not close an auxiliary call. Keep the plugin-unload
+effect that closes every owned process.
+
+Reason: before this change, a deleted dsh session left its Claude CLI process
+and its MCP handlers open. Many deleted sessions grew the process count. The
+session map is keyed by dsh session ID and generation ID, so the listener selects
+the exact generation. An auxiliary call has its own key and its own stream close.
+A different session keeps its process.
+
+Evidence: offline row O67 and O68. The tests use the real dsh 0.2.2-rc.1
+`SessionStore` with two sessions in separate owner fibers and the scripted
+native runtime. Disposing one session closes only its process; the other process
+stays live; plugin unload then closes it. No live Claude process was measured.
+
+## D28. Cache one accepted auth check for a short interval
+
+Decision: `AuthGuard` caches one accepted auth result for 60 seconds. The cache
+scope contains the executable, the home, the workspace, each settings file's
+modification time and size, and the allowlisted child environment values. Run
+the settings safety check on every call, also on a cache hit. Never cache a
+refusal. A caller can supply the account binding that it requires. A cache hit
+is valid only for that binding, and a different result returns
+`AUTH_ROUTE_REFUSED`.
+
+Reason: before this change, every `stream()` call started one `claude auth
+status` process. The command is local, but it adds a delay to each turn. The
+scope facts change when the login home, the workspace, the settings files, the
+executable, or the child environment changes. The settings safety check stays
+mandatory, so a new helper or billing override cannot hide behind a cache hit.
+The plugin cannot read the current account binding without the auth command.
+The 60-second interval bounds an unnoticed login change. A caller that must bind
+inference to one account passes the expected binding.
+
+Evidence: offline row O69. The tests use a fake runner and a controlled clock.
+Two accepted checks in one scope run one command. A changed home, workspace,
+settings file state, environment value, or interval runs the command again. A
+refusal runs the command again. This is an offline behavior. No live auth
+command was measured after this change.
