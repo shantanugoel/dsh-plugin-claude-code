@@ -1,0 +1,89 @@
+{
+  "measurement_date": "2026-11-11",
+  "topic": "MCP tool-handler arrival order across tool calls in one native generation",
+  "environment": {
+    "dsh_cli": "0.2.2-rc.1",
+    "claude_code_cli": "2.1.319",
+    "agent_sdk": "0.3.322",
+    "plugin_package": "dsh-plugin-claude-code 0.2.0",
+    "plugin_source": "local checkout at fbb8b3a plus this fix",
+    "route": "claude-code-session, model sonnet, reasoningEffort medium",
+    "desktop_profile_used_for_repro": false,
+    "dsh_home": "isolated temporary DSH_HOME; headless profile from the shipped template",
+    "permission_mode": "DSH_PERMISSION_MODE=danger-full-access, because the headless bash sandbox backend is not usable on this host"
+  },
+  "defect": {
+    "user_symptom": "The model called run_code nine times. The first call returned its result. The next eight calls returned the error text 'The tool handler does not match a staged result.' and the model reported that its only tool was broken.",
+    "desktop_session": "session-93e055c9-5e96-441f-9c32-670a66e16b17, turn 1, agent preset ptc",
+    "claude_cli_transcript": "~/.claude/projects/-Users-shantanugoel-dev-dsh-plugin-claude-code/6b72339e-e671-4404-9227-0cf53820fe85.jsonl",
+    "observed_call_ids": [
+      "toolu_01RRjacxkDxA4QZrsN3qnUSk: result returned",
+      "toolu_01FR6vV9sRxXMTMRVWueUbxV: error",
+      "toolu_01252LosfMFsZ55TnAWKLAD7: error",
+      "toolu_01JCYH3DU5or3MjcYd86qh7d: error",
+      "toolu_01RaM3EG258vxYhnyLDEarcW: error",
+      "toolu_01M6W5UCcDoYF8DdeFTteWf1: error",
+      "toolu_01Wg26o7gje4BvZbXVTCGhxY: error",
+      "toolu_01B4GRAkgyScp9rc7RJXcwBC: error",
+      "toolu_01SvanTZjVKMXted7nGCfc21: error"
+    ],
+    "dsh_side": "The dsh session recorded each run_code call and each dsh tool result. dsh executed the tools. The error reached only the native Claude turn."
+  },
+  "root_cause": "The CLI invokes the MCP tool handler as soon as it emits a tool call. dsh publishes the call ids of that turn to the bridge only after the complete native turn ends. After the first released batch the bridge was still in the released state with the previous batch in its staged map. The next handler therefore hit the released path, found no staged id, and was refused at once. The bridge refused every handler after the first batch of a generation.",
+  "pre_fix_reproduction": {
+    "method": "dsh --profile headless --json with the task: use the bash tool twice, echo FIRST-TOKEN then echo SECOND-TOKEN",
+    "observed": "call 1 completed with FIRST-TOKEN; call 2 recorded a completed dsh result SECOND-TOKEN and the model received 'The tool handler does not match a staged result.'",
+    "session": "session-23c8a876-a790-4a9a-9a63-8b7891339a12"
+  },
+  "fix": {
+    "module": "src/mcp-bridge.ts",
+    "change": "wait() parks a handler that is not in the released batch instead of refusing it. expect() refuses a parked handler whose id is not in the newly published call list. The whole-batch order check and the duplicate-delivery refusal do not change.",
+    "regression_tests": "test/mcp-bridge.test.ts, rows O97 and O98 in docs/test-plan.md",
+    "offline_result": "193 Node tests pass; npm run check passes"
+  },
+  "post_fix_measurements": [
+    {
+      "check": "two sequential bash calls",
+      "result": "both completed"
+    },
+    {
+      "check": "three sequential bash calls",
+      "result": "all three completed; final answer ONE,TWO,THREE",
+      "session": "session-9556da28-8d22-4034-b263-5f732463a405"
+    },
+    {
+      "check": "four sequential bash calls",
+      "result": "all four completed; final answer FIRST-TOKEN, SECOND-TOKEN, THIRD-TOKEN, FOURTH-TOKEN",
+      "session": "session-f53dc7be-d3c7-4bea-ad2b-e7cf43653964"
+    },
+    {
+      "check": "failed read tool call, then a bash call",
+      "result": "the read error result and the next bash result both reached the model; final answer reports both",
+      "session": "session-8e17bb24-7ccf-4ecc-be84-2c6c18c1608b"
+    },
+    {
+      "check": "two bash calls in one model response",
+      "result": "both completed; final answer PAR-A and PAR-B",
+      "session": "session-00fdff2d-1a71-4b49-8a9d-cfc6526a852e"
+    },
+    {
+      "check": "grep then read a workspace file",
+      "result": "both completed; final answer c.txt",
+      "session": "session-b47d07a6-6ac1-473d-a4f7-10237255d2ef"
+    },
+    {
+      "check": "resume the session and use bash in the next turn",
+      "result": "completed; final answer TURN2-TOKEN. The resume started a new generation with reason restore, so this does not measure two turns on one generation.",
+      "session": "session-cd4e6147-2d06-4720-89f9-b2f7f7595dfe"
+    }
+  ],
+  "request_evidence": "The fixed runs stored retentionAudit 'accepted' for the simple tool turns. Error-result continuations stored 'unavailable', as before.",
+  "not_measured": [
+    "The ptc preset and the run_code tool in a live profile after the fix. The shipped headless profile has no agent-preset registry, so the reproduction used the standard preset and the bash tool. The desktop defect used the ptc preset and run_code. Both paths use one MCP bridge and one handler for each tool call.",
+    "Two user turns on one native generation in the desktop profile after the fix. A desktop app restart is necessary to load the fixed build.",
+    "Signed-thinking retention through the fixed tool turns."
+  ],
+  "no_direct_model_request": true,
+  "raw_capture_committed": false,
+  "account_data_committed": false
+}

@@ -716,3 +716,32 @@ with the reason "earlier message prefix differs", so signed-thinking retention
 through the in-profile audit stays unmeasured and is not claimed. The direct
 evidence for thinking retention remains the saved direct-CLI measurement
 (cli-2.1.319.json); the in-profile path needs its own measurement.
+
+## D34. Park a tool handler that arrives before its call ids are published
+
+A desktop dsh session on 2026-11-11 failed every tool call after the first call
+of one native generation. The model received "The tool handler does not match a
+staged result." for each later call. The dsh session recorded every call and
+every dsh result, so dsh executed the tools. The error reached only the native
+Claude turn. The first of nine `run_code` calls succeeded and the next eight
+failed.
+
+Measured cause: the CLI invokes the MCP handler as soon as it emits a tool call.
+dsh publishes the call ids of that turn to the bridge only after the complete
+native turn ends. After the first released batch, the bridge was still in the
+released state with the previous batch in its staged map. The next handler
+arrived in that state and was refused at once.
+
+Decision: `wait()` parks a handler that is not in the released batch. The next
+`stage()` delivers its result to the exact call id. `expect()` refuses a parked
+handler whose id is not in the newly published call list, so a stale or unknown
+id fails there and not at the long result deadline. The whole-batch order check
+in `stage()` and the duplicate-delivery refusal do not change. Do not restore
+the immediate refusal in `wait()`: it fails the normal arrival order of every
+generation with more than one tool call.
+
+Evidence: [bridge-tool-handler-race-2026-11-11.json](evidence/bridge-tool-handler-race-2026-11-11.json).
+Offline rows O97 and O98 and `test/mcp-bridge.test.ts`. The live reproduction
+and the fixed reruns used the standard preset with the `bash` tool. The desktop
+defect used the `ptc` preset with `run_code`. Both paths use one MCP bridge and
+one handler for each tool call.

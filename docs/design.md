@@ -264,6 +264,16 @@ blocks and image blocks to MCP result content in their original order. It
 refuses any other result block before release. A tool result can hold several
 blocks, so a text summary and its image stay in one result.
 
+A measured arrival order limits this rule. The CLI invokes the MCP handler for a
+tool call as soon as it emits that call. dsh publishes the call ids of the turn
+only after the complete native turn ends. Thus the handler of every call after
+the first call of a generation can arrive while the bridge still holds the
+released state of the previous batch. Do not refuse that handler. Park it, and
+deliver its result when `stage()` receives its batch. `expect()` refuses a
+parked handler whose id is not in the newly published call list, so a stale or
+unknown id fails there and not at the long result deadline. See decision D34 and
+[the race record](evidence/bridge-tool-handler-race-2026-11-11.json).
+
 For a user image, the adapter reads one exact request version from the
 attachment service and sends it as a base64 image block. It writes one stable
 text line before that block with the attachment identity and the request size.

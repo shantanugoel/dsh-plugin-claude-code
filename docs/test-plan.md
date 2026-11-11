@@ -2,8 +2,8 @@
 
 Use three test layers. Keep the result of each layer separate.
 
-Offline status on 2026-11-11: the Node suite covers rows O01 through O88 with
-synthetic data and the scripted runtime, and 188 tests pass. The dsh 0.2.2-rc.1
+Offline status on 2026-11-11: the Node suite covers rows O01 through O98 with
+synthetic data and the scripted runtime, and 193 tests pass. The dsh 0.2.2-rc.1
 LLM service, session store, and compaction balance functions are loaded in that
 suite. The real dsh LLM runtime is mounted for file and image projection tests
 and for the native error finish test. The agent loop is not driven. No offline
@@ -21,7 +21,8 @@ O78 cover trailing user content inside a waiting tool turn. Rows O79 to O81 cove
 the live-shaped tool-turn transport shapes. Rows O82 to O88 cover the request
 image budget, the offload retry, and the retained-image generation threshold.
 Row O89 to O95 cover the request-evidence capture. Row O96 covers the live
-profile audit measurement. They are offline tests, except row O96, which is a
+profile audit measurement. Rows O97 and O98 cover the MCP tool-handler arrival
+order across tool calls. They are offline tests, except row O96, which is a
 live measurement. No live model request measured the rollover, a provider error,
 a configuration change, a live token meter, a live dsh compaction, or the
 provider image limit, and the tests claim no signed-thinking retention across any
@@ -170,6 +171,13 @@ result delivery, opened session, close request, and remaining child handle.
 | O95 | Generation close or a native start failure with the raw-body diagnostic enabled | The private directory is removed; no raw request body reaches git or the package |
 
 | O96 | A live tool turn through the plugin in an isolated dsh headless profile | Every turn stores a complete request record and `retentionAudit: "accepted"`; the tool list holds the 23 dsh MCP tools plus the recorded inert placeholder; an image-bearing request reports `unavailable` |
+| O97 | A tool handler for the next turn arrives before dsh publishes that turn's call ids, after the previous batch was released | The bridge parks the handler; the next `stage()` delivers its result to the exact call id; the turn completes with every tool call |
+| O98 | A tool handler has an id outside the published call list | The bridge refuses it with `TOOL_RESULT_MISMATCH` when `expect()` publishes the turn's ids; no handler waits for the result deadline |
+
+Rows O97 and O98 are offline unit tests in `test/mcp-bridge.test.ts`. They
+reproduce a live defect that failed every tool call after the first tool call of
+a native generation. See decision D34 and
+[the race record](evidence/bridge-tool-handler-race-2026-11-11.json).
 
 O89 to O95 passed offline on 2026-11-11. The live probe summary is
 [request-evidence-probe-2026-11-11.json](evidence/request-evidence-probe-2026-11-11.json).
@@ -371,10 +379,17 @@ The runs used an isolated `DSH_HOME` headless profile, not the desktop profile.
 | L04 | The next native request after a tool result retains the signed thinking block unchanged | Unverified: the following request stored `unavailable` (`earlier message prefix differs`; image content is not compared yet) |
 | L05 | `CLAUDE_CODE_MAX_OUTPUT_TOKENS` reaches the native request | Unverified: the headless task path has no `maxTokens` control; offline row O39 only |
 | L06 | A many-image session offloads safely or fails with the documented code | Unverified: no dsh profile run with more than 80 retained images |
+| L07 | Several tool calls in one native generation complete through dsh | Measured after the D34 fix: 3 and 4 sequential `bash` calls, a failed tool result followed by a completed call, and 2 calls were delivered to the model. Before the fix, every call after the first one failed |
 
 The plugin reports `unavailable` honestly when a check fails. Do not describe a
 correct answer, a stored replay envelope, or an accepted audit as retention
 proof until L04 passes.
+
+The L07 runs used the standard preset. The desktop defect that L07 covers used
+the `ptc` preset and the `run_code` tool. The shipped headless profile has no
+agent-preset registry, so the `ptc` path has no live rerun after the fix. The
+bridge and the handler path are the same in both presets. The raw run records
+are in [the race record](evidence/bridge-tool-handler-race-2026-11-11.json).
 
 ## Release gate
 

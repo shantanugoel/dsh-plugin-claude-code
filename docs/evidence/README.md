@@ -118,6 +118,22 @@ placeholder, and the design permits it only with its complete definition
 recorded. An image-bearing request reports `unavailable`. Raw captures stayed in
 a private temporary directory and are not committed.
 
+## Tool-handler race
+
+[bridge-tool-handler-race-2026-11-11.json](bridge-tool-handler-race-2026-11-11.json)
+records a defect and its fix on 2026-11-11. A desktop dsh session used the
+`ptc` preset and the `run_code` tool. The first of nine tool calls returned its
+result and the next eight returned "The tool handler does not match a staged
+result." The dsh session recorded every call and result, so dsh executed the
+tools. The cause was the MCP bridge: the CLI invokes a tool handler before dsh
+publishes that turn's call ids, and the bridge refused the handler in the
+released state of the previous batch. An isolated headless profile reproduced
+the same shape with two `bash` calls. After the fix, 2, 3, and 4 sequential
+calls, a failed call followed by a successful call, and two calls in one model
+response all reached the model. The record lists the one gap: no live `ptc`
+rerun, because the headless profile has no agent-preset registry. The record
+contains no account data and no raw capture.
+
 ## Limits
 
 - This was a direct `claude -p` probe, not the planned SDK plugin.

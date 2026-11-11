@@ -49,12 +49,11 @@ export class McpBridge {
       this.delivered.add(callId)
       return Promise.resolve(staged)
     }
-    if (this.released) {
-      return Promise.reject(pluginFailure(
-        'TOOL_RESULT_MISMATCH',
-        'The tool handler does not match a staged result.',
-      ))
-    }
+    // A native handler can arrive before the next turn's expected call ids are
+    // published: the CLI invokes the handler as soon as it emits the tool call,
+    // and dsh publishes those ids only after the native turn ends. Park the
+    // handler. The next stage() delivers its result, and a stale or unknown id
+    // is refused at that release or by the deadline.
     return new Promise((resolve, reject) => {
       const timer = setTimeout(() => {
         this.waiters.delete(callId)
@@ -78,6 +77,18 @@ export class McpBridge {
   }
 
   expect(callIds: readonly string[]): void {
+    // A parked handler for an id outside this turn's published calls can never
+    // receive a result. Refuse it now, so it does not wait for the long result
+    // deadline. A handler of this turn stays parked for its stage().
+    const published = new Set(callIds)
+    for (const [callId, waiter] of this.waiters) {
+      if (published.has(callId)) continue
+      this.waiters.delete(callId)
+      waiter.reject(pluginFailure(
+        'TOOL_RESULT_MISMATCH',
+        'The tool handler has no published call id.',
+      ))
+    }
     this.expected = [...callIds]
     this.staged.clear()
     this.delivered.clear()
