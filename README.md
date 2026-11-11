@@ -9,11 +9,25 @@ sandbox, and the approvals.
 
 ## Requirements
 
-- DeepSeek Harness 0.2.2-rc.1. Later versions are untested but may work.
+- DeepSeek Harness 0.2.2-rc.1, the tested version. The plugin installs and
+  activates only with this version.
 - The official Claude Code CLI on `PATH`, signed in with a claude.ai
   subscription.
 - For an install from GitHub: Node.js 24.9 or later, and npm on `PATH`. The
   package builds during installation.
+
+The plugin declares the exact tested dsh version in `engines.dsh`. The dsh
+plugin manager refuses another dsh version until a compatibility check. It
+prints the plugin name and version, the failed requirement, the running dsh
+version, and the exemption command. The exemption records one exact plugin
+version for one exact dsh version:
+
+```sh
+dsh plugin --profile <profile> allow-version dsh-plugin-claude-code@0.2.0 --dsh-version <running-version> --accept-risk
+```
+
+Use the exemption only after you accept the risk. A new dsh release needs a
+compatibility test and a new plugin version.
 
 The plugin accepts only a first-party Claude subscription login. It refuses an
 API key, a Claude Console login, and a custom billing endpoint.

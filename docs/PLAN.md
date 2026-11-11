@@ -44,9 +44,14 @@ auxiliary purposes through a deterministic flat-text import in a separate native
 session. The offline suite has 135 tests after this change merged. No live dsh
 token meter, no live compaction, and no live model switch were measured.
 
+Status, 2026-11-11 (issue #12): no dsh release later than 0.2.2-rc.1 exists. The
+plugin keeps the exact `engines.dsh` pin (D26), the README agrees, and the
+plugin manager refuses an untested engine requirement with a clear message.
+
 ## Fixed requirements
 
-- Minimum target: dsh 0.2.2-rc.1. Check each advertised later version.
+- Minimum target: dsh 0.2.2-rc.1, the only published release. Keep the exact
+  engine pin until a later release passes a compatibility test (D26).
 - Use the user's installed official Claude binary through the official SDK.
 - Use the user's existing subscription login. No Console key or OAuth replay.
 - Keep the true dsh identity. Do not change client or billing headers.
@@ -219,6 +224,10 @@ fork, and fixed-configuration changes with a recorded change.
   2026-11-11 with an npm Git dependency install, a packed archive, an isolated
   dsh profile install from a local Git spec, and the documented GitHub spec in a
   fresh isolated DSH_HOME profile.
+- [x] Declare the exact tested dsh version as the engine requirement and state
+  the refusal behavior in the README. Tested on 2026-11-11: the tested version
+  accepted the plugin; a changed requirement was rejected at install and skipped
+  at startup (D26).
 - [ ] Check the packed file list. Include compiled code, bundle patch, README,
   and the selected license. Exclude credentials, private logs, tests with real
   data, caches, and development artifacts. `pack:check` passed on 2026-11-10.
@@ -263,8 +272,9 @@ small test. If the user changes that requirement, record the new scope first.
 - [ ] Choose the release license, version, supported runtime range, and built
   distribution method. Publish or install into a personal profile only within
   the user's authorized deployment scope. Distribution method, 2026-11-11: a Git
-  dependency with an install-time `prepare` build (D20). The license, version,
-  and runtime range stay open.
+  dependency with an install-time `prepare` build (D20). Runtime range,
+  2026-11-11: the exact tested dsh version only (D26). The license and version
+  stay open.
 
 Completion: all required release tests pass and the spend requirement is met.
 If it remains unmet, deliver the offline-tested plugin with inference disabled

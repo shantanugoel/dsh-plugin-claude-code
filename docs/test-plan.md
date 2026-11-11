@@ -253,6 +253,23 @@ Inspect the complete native tool list for advisor and any other executable nativ
 tool. Check unwanted file instructions, git guidance, plugins, and reminders.
 Verify that managed policy is either compatible or causes a clear refusal.
 
+## Engine gate checks
+
+The plugin declares the exact tested dsh version in `engines.dsh`. The dsh
+plugin manager enforces it alone. D26 records the decision.
+
+| ID | Setup or change | Required result |
+| --- | --- | --- |
+| G01 | `dsh plugin add` of the package on tested dsh 0.2.2-rc.1 in an isolated profile | The requirement is accepted; the profile adds the plugin bundle; `--dump-config` lists the enabled route |
+| G02 | Install a temporary copy under `/tmp` with `engines.dsh` set to an untested version | Rejection before installation with the plugin, requirement, running version, risk, and exemption command; `nothing was installed`; profile manifest unchanged |
+| G03 | Run a profile whose installed plugin declares an untested `engines.dsh` | Startup skips that bundle with a clear message; the route is not composed; unrelated plugins still boot |
+| G04 | Read the published dsh version list from npm | The list ends at the tested version; no later release exists |
+
+G01 to G04 passed on 2026-11-11. The reviewed summary is
+[engine-check-2026-11-11.json](evidence/engine-check-2026-11-11.json). The
+rejection cases changed the package requirement, not the runtime version, because
+no later dsh release exists. The exemption flow was not exercised.
+
 ## Release gate
 
 Release requires the offline suite, real dsh integration, accepted strict spend

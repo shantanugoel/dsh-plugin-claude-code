@@ -43,6 +43,16 @@ listed the route. The documented GitHub spec install then passed on 2026-11-11
 in a fresh isolated DSH_HOME profile. The record contains no account data and no
 raw capture.
 
+## Engine check
+
+[engine-check-2026-11-11.json](engine-check-2026-11-11.json) records the issue #12
+checks on 2026-11-11. No dsh release later than 0.2.2-rc.1 exists. The tested
+version accepted the plugin in an isolated profile. A temporary copy under
+`/tmp` with a changed `engines.dsh` was rejected at install with a clear message,
+and an installed copy with that changed requirement was skipped at startup. The
+rejection cases changed the package requirement, not the runtime version. The
+record contains no account data and no raw capture.
+
 ## Limits
 
 - This was a direct `claude -p` probe, not the planned SDK plugin.

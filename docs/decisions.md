@@ -452,3 +452,29 @@ the dsh tool list prevents a summary from starting a tool wait that no
 conversation can answer.
 
 Evidence: offline rows O40 and O64 to O66. No live dsh compaction ran.
+
+## D26. Declare the exact tested dsh version as the engine requirement
+
+Decision: keep the exact `engines.dsh` value `0.2.2-rc.1` in `package.json`. Do
+not widen it to a range. The README states that the plugin installs and
+activates only with the tested dsh version, and that the plugin manager refuses
+another version until a compatibility check.
+
+Reason: no dsh release later than 0.2.2-rc.1 exists. The npm registry version
+list on 2026-11-11 ended at 0.2.2-rc.1, and the `latest` and `next` dist-tags
+named it. A range such as `>=0.2.2-rc.1 <0.3` would assert support for a later
+release that no compatibility test covers. The plugin depends on host services
+and lifecycle details that can change between releases. The dsh plugin manager
+enforces `engines.dsh` alone. It refuses an install and skips the bundle at
+startup with a clear diagnostic. It also prints the exact-version exemption
+command. A user who accepts the risk can record that exemption. A later dsh
+release needs a compatibility test and a new plugin release before this
+requirement changes.
+
+Evidence: [engine-check-2026-11-11.json](evidence/engine-check-2026-11-11.json).
+On 2026-11-11 the tested version accepted the plugin in an isolated profile. A
+temporary copy with `engines.dsh` set to `0.2.3` was rejected before
+installation with a clear message and `nothing was installed`. The same changed
+requirement on an installed copy caused `dsh: skipping profile bundle
+"dsh-plugin-claude-code"` at startup. A real later dsh release was not run
+because none exists.

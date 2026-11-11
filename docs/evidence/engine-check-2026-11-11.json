@@ -1,0 +1,63 @@
+{
+  "measurement_date": "2026-11-11",
+  "issue": 12,
+  "decision": "D26",
+  "engines_pin": {
+    "node": ">=24.9.0",
+    "dsh": "0.2.2-rc.1"
+  },
+  "runtime": {
+    "dsh_cli": "0.2.2-rc.1",
+    "platform": "macOS arm64",
+    "profile": "headless, created from the shipped template in a fresh isolated DSH_HOME",
+    "desktop_profile_used": false
+  },
+  "registry_check": {
+    "command": "npm view @deepseek-ai/dsh versions --json and npm view @deepseek-ai/dsh dist-tags --json",
+    "versions_count": 42,
+    "newest": "0.2.2-rc.1",
+    "newest_publish_time": "2026-11-04T09:20:32.310Z",
+    "dist_tags": {
+      "latest": "0.2.2-rc.1",
+      "next": "0.2.2-rc.1",
+      "alpha": "0.2.2-alpha.3"
+    },
+    "later_release_exists": false
+  },
+  "accept": {
+    "method": "dsh plugin --profile headless add <checked-out package> in a fresh isolated profile",
+    "result": "pass",
+    "details": "Exit 0. The profile added the dependency and the plugin bundle. --dump-config listed the enabled claude-code-session entry and printed no skipping message. The issue #1 post-push GitHub spec install on the same dsh version also installed the plugin."
+  },
+  "reject_at_install": {
+    "method": "git archive of origin/main under /tmp with engines.dsh changed to 0.2.3; dsh plugin --profile headless add /tmp/engines-mismatch",
+    "result": "pass (expected rejection)",
+    "details": "Exit 1. The message named the plugin, the running dsh version, the requirement, the risk, and the exemption command, and ended with 'dsh: nothing was installed.' The host also printed the exact remedy command. The profile package.json dependencies stayed empty and the plugin was not installed. The repository was not changed.",
+    "rejection_prefix": "dsh: installation rejected: Plugin dsh-plugin-claude-code@0.2.0 is incompatible with dsh 0.2.2-rc.1: requirements {\"engines.dsh\":\"0.2.3\"}."
+  },
+  "reject_at_startup": {
+    "method": "Installed copy from the GitHub spec in an isolated profile. engines.dsh changed to 0.2.3 in the installed package.json. dsh --profile headless --dump-config.",
+    "result": "pass (expected skip)",
+    "details": "Exit 0. The boot printed 'dsh: skipping profile bundle \"dsh-plugin-claude-code\": Error: Plugin dsh-plugin-claude-code@0.2.0 is incompatible with dsh 0.2.2-rc.1: requirements {\"engines.dsh\":\"0.2.3\"}.' The claude-code-session entry was absent from the composed tree. After the manifest restore, the entry returned and the message was absent.",
+    "restored": true
+  },
+  "exemption_flow": {
+    "exercised": false,
+    "command_printed_by_host": "dsh plugin --profile <profile> allow-version dsh-plugin-claude-code@0.2.0 --dsh-version 0.2.2-rc.1 --accept-risk"
+  },
+  "pack_check": "pass, 55 files",
+  "offline_suite": "pass at the time of the measurement",
+  "no_model_prompt_sent": true,
+  "raw_capture_committed": false,
+  "proven": [
+    "The npm registry has no dsh release later than 0.2.2-rc.1.",
+    "The tested dsh 0.2.2-rc.1 accepts the exact engines.dsh requirement and activates the plugin bundle.",
+    "An untested engine requirement is rejected at install with a clear message and no installation.",
+    "An installed plugin with an untested engine requirement is skipped at startup with a clear message, and unrelated plugins still boot."
+  ],
+  "not_proven": [
+    "A real later dsh release; none exists.",
+    "The exact-version exemption flow; the host printed the command but it was not run.",
+    "Plugin behavior on any dsh version other than 0.2.2-rc.1."
+  ]
+}

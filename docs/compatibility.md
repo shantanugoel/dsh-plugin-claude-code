@@ -8,12 +8,44 @@ flag changes a native request.
 
 ## dsh baseline
 
-The minimum version is dsh 0.2.2-rc.1. On this date, the npm version list for
-`@deepseek-ai/dsh` and `@deepseek-ai/dsh-llm` ends at `0.2.2-rc.1`. No later
-advertised release was available to check.
+The tested version is dsh 0.2.2-rc.1. On 2026-11-11 the npm registry version
+list for `@deepseek-ai/dsh` had 42 versions and ended at `0.2.2-rc.1`. The
+`latest` and `next` dist-tags named `0.2.2-rc.1`, which was published on
+2026-11-04. No later release exists. The plugin does not claim support for a
+later dsh release until its own compatibility test passes.
 
-The plugin `engines.dsh` value is the exact version `0.2.2-rc.1`. A later dsh
-release needs its own check before this plugin claims support for it.
+The plugin `engines.dsh` value is the exact version `0.2.2-rc.1`. The dsh plugin
+manager evaluates this field alone: a runtime version that does not satisfy the
+exact value is incompatible. A later dsh release therefore disables the plugin
+until the user grants the exact-version exemption or a new plugin version is
+tested.
+
+Engine gate checks on 2026-11-11 used the dsh 0.2.2-rc.1 CLI and an isolated
+`DSH_HOME` profile from the shipped `headless` template. The desktop profile was
+not used.
+
+- The tested version accepted the plugin. A `dsh plugin add` of the checked-out
+  package accepted the exact requirement, the profile added the plugin bundle,
+  and `--dump-config` listed the enabled `claude-code-session` entry. The issue
+  #1 GitHub spec install on the same tested version also installed the plugin.
+- An install of a temporary copy under `/tmp` with `engines.dsh` set to `0.2.3`
+  was rejected before installation. The message names the plugin, the running
+  dsh version, the requirement, the risk, and the exemption command, and ends
+  with `dsh: nothing was installed.` The profile manifest stayed unchanged.
+- An installed copy with the same changed requirement was skipped at profile
+  startup. The message was `dsh: skipping profile bundle
+  "dsh-plugin-claude-code": Error: Plugin dsh-plugin-claude-code@0.2.0 is
+  incompatible with dsh 0.2.2-rc.1: requirements {"engines.dsh":"0.2.3"}.` The
+  plugin entry was absent from the composed profile. The boot continued and no
+  unrelated plugin failed.
+- The exemption flow was not exercised. The host printed the exact command
+  `dsh plugin --profile <profile> allow-version dsh-plugin-claude-code@0.2.0
+  --dsh-version 0.2.2-rc.1 --accept-risk`.
+
+A later dsh release cannot be run because no later release exists. The rejection
+cases changed the package requirement, not the runtime version. They exercise
+the same compatibility check, but they are not a measurement of a real later dsh
+release.
 
 These integrity values come from the npm registry and from `package-lock.json`
 for packages this repository installs.
@@ -220,7 +252,7 @@ with 76 tests. After the native-error work, which was merged after the rollover
 work, the suite had 117 tests. After the context-capacity and compaction-summary
 work the suite has 135 tests. The new tests use the scripted runtime. They do not
 start the Claude binary and they do not measure a context window. The packed
-file list has 59 files. The `npm pack --dry-run` check on 2026-11-11 used a
+file list has 63 files. The `npm pack --dry-run` check on 2026-11-11 used a
 temporary npm cache, because the default npm cache in this environment has
 root-owned entries and `npm pack` cannot write to it. The package version is
 0.2.0. No license is selected. The suite does not read Claude credentials and
