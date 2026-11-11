@@ -286,3 +286,41 @@ the first install with `ERR_PNPM_GIT_DEP_PREPARE_NOT_ALLOWED` and the exact
 `allowBuilds` key. The second run built and installed the plugin, and
 `--dump-config` listed the `claude-code-session` entry. The documented `github:`
 spec check is pending the push of this change.
+
+## D21. Recover a closed native generation with a recorded textual import
+
+Decision: when the next dsh request continues earlier conversation but the live
+native generation is invalid, closed, or absent, start a new native generation.
+Send one deterministic bounded text import of the projected dsh history plus the
+current pending content as the first user turn of the new native session. Record
+the import in the response replay data of the successful turn as
+`generationChange`. Do not send old signatures, reasoning text, image bytes, or
+tool-call ids. Do not claim signed-thinking retention across the change.
+
+Reason: Stop, generation timeout, process loss, dsh restore, plugin reload, and a
+forked subagent all end the live native process. The earlier behavior returned
+`REBASE_REQUIRED` and made the dsh session unusable. The import keeps the dsh
+session, the dsh log, the tools, and the approvals. The replay data is stored in
+the dsh log, so the import is recorded and measurable.
+
+Native resume is not implemented. The pinned SDK 0.3.322 declares `options.resume`
+and `forkSession`. This project has no measurement that a resumed CLI transcript
+matches the dsh prefix, or that old signatures stay valid after the dsh request
+changed. Keep native resume as an open alternative. Do not close it without a
+measurement. Do not claim that it works.
+
+The import has these limits:
+
+- It holds no old signed thinking. A new native session starts a new thinking
+  chain.
+- It is text. The old native block data stays in the dsh log only.
+- It is bounded. A long history can be omitted with an explicit mark.
+- It is user content. The frozen dsh request does not change.
+- It replaces each image with its attachment id. It reads no image bytes.
+
+The recovery record uses reason `abort`, `timeout`, `process-loss`, `restore`,
+`fork`, or `invalid`. A later change adds `configuration-change` and
+`image-budget`.
+
+Evidence: offline rows O43 to O52. No live model request was made for this
+change. The import uses the same streaming input path as an ordinary user turn.

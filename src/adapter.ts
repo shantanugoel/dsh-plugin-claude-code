@@ -13,7 +13,7 @@ import {
 
 import type { AuthGuard, HomeSource } from './auth.js'
 import { canonicalJson, contentHash } from './canonical.js'
-import { requireAbsoluteWorkspace, type WorkspaceSource } from './context.js'
+import { requireAbsoluteWorkspace, type SessionOriginSource, type WorkspaceSource } from './context.js'
 import { withDeadline, type Deadlines } from './deadlines.js'
 import { claudeEffort, reasoningFor, type ClaudeEffort } from './effort.js'
 import { pluginFailure } from './errors.js'
@@ -28,7 +28,7 @@ import { McpBridge, mapToolNames } from './mcp-bridge.js'
 import { projectCatalogModel } from './catalog.js'
 import type { DiscoveredModel } from './model-discovery.js'
 import { recordContextImport as appendContextImport } from './rebase.js'
-import { parseReplay, type ReplayV1 } from './replay.js'
+import { parseReplay, type GenerationChangeReason, type ReplayV1 } from './replay.js'
 import { CLAUDE_CODE_SESSION_ROUTE, INFERENCE_SCOPE } from './route.js'
 import { buildSdkLaunchPlan } from './sdk-plan.js'
 import type { NativeContentBlock, NativeRuntime, NativeToolResult } from './sdk-runtime.js'
@@ -36,14 +36,22 @@ import type { LiveGeneration, SessionManager } from './session-manager.js'
 import type { Session, SessionStore } from '@deepseek-ai/dsh-session'
 
 import type { SpendGate } from './spend-gate.js'
-import { isAbortError, readUntilStop, translateTurn } from './stream.js'
-import { admitTranscript, publicationFrom, requestHasReplay, type Admission, type ToolResultInput } from './transcript.js'
+import { isAbortError, nativeFailureReasonOf, readUntilStop, translateTurn } from './stream.js'
+import {
+  admitTranscript,
+  publicationFrom,
+  requestNeedsRecovery,
+  type Admission,
+  type ToolResultInput,
+} from './transcript.js'
+import { planRollover } from './rollover.js'
 
 export interface AdapterDependencies {
   readonly runtime: NativeRuntime
   readonly spendGate: SpendGate
   readonly sessions: SessionManager
   readonly workspace: WorkspaceSource
+  readonly sessionOrigin?: SessionOriginSource
   readonly auth: AuthGuard
   readonly home: HomeSource
   readonly parentEnv: () => NodeJS.ProcessEnv
@@ -203,7 +211,9 @@ export class ClaudeCodeAdapter extends LlmAdapter {
     if (options.signal?.aborted === true) {
       if (options.sessionId !== undefined && options.purpose === undefined) {
         const existing = this.dependencies.sessions.conversation(String(options.sessionId))
-        if (existing !== undefined) await this.invalidate(existing)
+        if (existing !== undefined && existing.phase !== 'INVALID' && existing.phase !== 'CLOSED') {
+          await this.invalidate(existing, 'abort')
+        }
       }
       yield abortedFinish()
       return
@@ -285,17 +295,18 @@ export class ClaudeCodeAdapter extends LlmAdapter {
     try {
       live.phase = 'GENERATING'
       live.dispatchedHash = admission.requestHash
+      live.dispatchedMessages = admission.committed
       await live.native.sendUser({ content })
       const chunks = await this.collectTurn(live, admission, options.signal)
       live.phase = 'READY'
       for (const chunk of chunks) yield chunk
     } catch (error) {
       if (isAbortError(error) || options.signal?.aborted === true) {
-        await this.invalidate(live)
+        await this.invalidate(live, 'abort')
         yield abortedFinish()
         return
       }
-      await this.invalidate(live)
+      await this.invalidate(live, nativeFailureReasonOf(error) ?? 'invalid')
       throw error
     } finally {
       if (live.phase !== 'INVALID') await this.dependencies.sessions.closeKey(key)
@@ -307,28 +318,45 @@ export class ClaudeCodeAdapter extends LlmAdapter {
     workspace: string,
     sessionId: string,
   ): AsyncIterable<StreamChunk> {
-    let live = this.dependencies.sessions.conversation(sessionId)
-    if (live?.phase === 'INVALID' || live?.phase === 'CLOSED') {
-      throw pluginFailure('REBASE_REQUIRED', 'The native generation is closed. Start a recorded new generation.')
-    }
-    if (live === undefined && requestHasReplay(options.messages)) {
-      throw pluginFailure(
-        'REBASE_REQUIRED',
-        'Saved replay state has no live native process. Record a context import.',
-      )
-    }
+    const live = this.dependencies.sessions.conversation(sessionId)
     const prompt = systemPromptOf(options)
     const tools = mapToolNames(options.tools ?? [])
     const toolsCanonical = canonicalJson(tools.tools)
     const effort = await this.effortFor(options.model, options.reasoningEffort)
-    if (live !== undefined && (
-      live.model !== options.model
+    if (live !== undefined) {
+      const deadReason = deadGenerationReason(live)
+      if (deadReason === undefined) {
+        yield* this.continueGeneration(live, options, workspace, prompt, toolsCanonical, effort)
+        return
+      }
+      yield* this.recoverGeneration(options, workspace, sessionId, live, deadReason, effort)
+      return
+    }
+    if (!requestNeedsRecovery(options.messages)) {
+      yield* this.startGeneration(options, workspace, sessionId, effort)
+      return
+    }
+    const reason: GenerationChangeReason = this.dependencies.sessionOrigin?.kind(sessionId) === 'fork'
+      ? 'fork'
+      : 'restore'
+    yield* this.recoverGeneration(options, workspace, sessionId, undefined, reason, effort)
+  }
+
+  /** Continue the healthy live generation. A fixed-configuration change refuses. */
+  private async *continueGeneration(
+    live: LiveGeneration,
+    options: GenerateOptions,
+    workspace: string,
+    prompt: string,
+    toolsCanonical: string,
+    effort: ClaudeEffort | undefined,
+  ): AsyncIterable<StreamChunk> {
+    if (live.model !== options.model
       || live.effort !== effort
       || live.maxOutputTokens !== options.maxTokens
       || live.workspace !== workspace
       || live.systemPrompt !== prompt
-      || live.toolsCanonical !== toolsCanonical
-    )) {
+      || live.toolsCanonical !== toolsCanonical) {
       throw pluginFailure(
         'REBASE_REQUIRED',
         'The model, effort, output cap, workspace, prompt, or tools changed. Start a recorded new generation.',
@@ -336,11 +364,11 @@ export class ClaudeCodeAdapter extends LlmAdapter {
     }
     const admission = admitTranscript({
       messages: options.messages,
-      waitingForResults: live?.phase === 'WAITING_FOR_RESULTS',
+      waitingForResults: live.phase === 'WAITING_FOR_RESULTS',
       state: {
-        committed: live?.committed ?? [],
-        pending: live?.pending,
-        dispatchedHash: live?.dispatchedHash,
+        committed: live.committed,
+        pending: live.pending,
+        dispatchedHash: live.dispatchedHash,
       },
     })
     // Prepare every image and result before the native boundary. A refusal
@@ -352,38 +380,114 @@ export class ClaudeCodeAdapter extends LlmAdapter {
     try {
       if (admission.kind === 'tool-results') {
         toolResults = await this.prepareResults(admission.results, options.signal)
-      } else {
+      } else if (admission.kind === 'first-user' || admission.kind === 'next-user') {
         userContent = await this.prepareContent(admission.userContent, options.signal)
       }
     } catch (error) {
-      if (live?.phase === 'WAITING_FOR_RESULTS') await this.invalidate(live)
+      if (live.phase === 'WAITING_FOR_RESULTS') await this.invalidate(live, 'invalid')
       throw error
     }
-    const generationId = live?.generationId ?? this.dependencies.sessions.nextGeneration(sessionId)
-    const key = live?.key ?? `${sessionId}:${generationId}`
-    if (live === undefined) live = await this.ensureSession(undefined, key, options, workspace, false, generationId, effort)
     if (admission.kind === 'tool-results' && toolResults !== undefined) {
       live.bridge.stage(toolResults)
       if (live.pending !== undefined) {
         live.pending = { ...live.pending, boundMessageId: admission.boundMessageId }
       }
     }
+    const send = admission.kind === 'tool-results'
+      ? () => live.native.continueAfterResults()
+      : () => live.native.sendUser({ content: userContent ?? [] })
+    yield* this.dispatchTurn(live, admission, options, send)
+  }
+
+  /** Start the first native generation for this dsh session. */
+  private async *startGeneration(
+    options: GenerateOptions,
+    workspace: string,
+    sessionId: string,
+    effort: ClaudeEffort | undefined,
+  ): AsyncIterable<StreamChunk> {
+    const admission = admitTranscript({
+      messages: options.messages,
+      waitingForResults: false,
+      state: { committed: [], pending: undefined, dispatchedHash: undefined },
+    })
+    if (admission.kind !== 'first-user') {
+      throw pluginFailure('REPLAY_STATE_INVALID', 'The first request did not admit as new user input.')
+    }
+    const userContent = await this.prepareContent(admission.userContent, options.signal)
+    const generationId = this.dependencies.sessions.nextGeneration(sessionId)
+    const key = `${sessionId}:${generationId}`
+    const live = await this.ensureSession(undefined, key, options, workspace, false, generationId, effort)
+    yield* this.dispatchTurn(live, admission, options, () => live.native.sendUser({ content: userContent }))
+  }
+
+  /**
+   * Start a new native generation with one recorded textual import.
+   * The imported history and the current pending content become one user turn.
+   * The dsh request stays unchanged. The successful replay stores the change.
+   */
+  private async *recoverGeneration(
+    options: GenerateOptions,
+    workspace: string,
+    sessionId: string,
+    dead: LiveGeneration | undefined,
+    reason: GenerationChangeReason,
+    effort: ClaudeEffort | undefined,
+  ): AsyncIterable<StreamChunk> {
+    const plan = planRollover({
+      messages: options.messages,
+      reason,
+      ...(dead === undefined ? {} : {
+        dead: {
+          generationId: dead.generationId,
+          cliSessionId: recordedCliSessionId(dead),
+          committed: dead.committed,
+          dispatchedMessages: dead.dispatchedMessages,
+          dispatchedHash: dead.dispatchedHash,
+        },
+      }),
+    })
+    const pendingContent = plan.pendingUserContent.length === 0
+      ? []
+      : await this.prepareContent(plan.pendingUserContent, options.signal)
+    if (dead !== undefined) await this.dependencies.sessions.closeKey(dead.key)
+    const generationId = this.dependencies.sessions.nextGeneration(sessionId)
+    const key = `${sessionId}:${generationId}`
+    const live = await this.ensureSession(undefined, key, options, workspace, false, generationId, effort)
+    const admission: Admission = {
+      kind: 'recovered',
+      requestHash: plan.requestHash,
+      committed: plan.committed,
+      generationChange: plan.generationChange,
+    }
+    const content: NativeContentBlock[] = [
+      { type: 'text', text: plan.importedText },
+      ...pendingContent,
+    ]
+    yield* this.dispatchTurn(live, admission, options, () => live.native.sendUser({ content }))
+  }
+
+  private async *dispatchTurn(
+    live: LiveGeneration,
+    admission: Admission,
+    options: GenerateOptions,
+    send: () => Promise<void>,
+  ): AsyncIterable<StreamChunk> {
     live.phase = 'GENERATING'
     live.dispatchedHash = admission.requestHash
+    live.dispatchedMessages = admission.committed
     try {
-      if (admission.kind === 'tool-results') await live.native.continueAfterResults()
-      else await live.native.sendUser({ content: userContent ?? [] })
+      await send()
       const chunks = await this.collectTurn(live, admission, options.signal)
-      if (live.pendingCalls.length > 0) live.phase = 'WAITING_FOR_RESULTS'
-      else live.phase = 'READY'
+      live.phase = live.pendingCalls.length > 0 ? 'WAITING_FOR_RESULTS' : 'READY'
       for (const chunk of chunks) yield chunk
     } catch (error) {
       if (isAbortError(error) || options.signal?.aborted === true) {
-        await this.invalidate(live)
+        await this.invalidate(live, 'abort')
         yield abortedFinish()
         return
       }
-      await this.invalidate(live)
+      await this.invalidate(live, nativeFailureReasonOf(error) ?? 'invalid')
       throw error
     }
   }
@@ -496,12 +600,15 @@ export class ClaudeCodeAdapter extends LlmAdapter {
       committed: [],
       pending: undefined,
       dispatchedHash: undefined,
+      dispatchedMessages: undefined,
+      invalidReason: undefined,
     }
     this.dependencies.sessions.insert(created)
     return created
   }
 
-  private async invalidate(live: LiveGeneration): Promise<void> {
+  private async invalidate(live: LiveGeneration, reason: GenerationChangeReason): Promise<void> {
+    live.invalidReason = reason
     live.phase = 'INVALID'
     live.bridge.cancel('The native session closed before the tool result was delivered.')
     await live.native.close()
@@ -626,7 +733,24 @@ function buildReplay(
     nativeResponseBlocks: nativeBlocks,
     toolNameMap: live.toolNameMap,
     retentionAudit: auditAccepted ? 'accepted' : 'unavailable',
+    ...(admission.kind === 'recovered' ? { generationChange: admission.generationChange } : {}),
   })
+}
+
+/**
+ * Why the live generation can no longer continue its native process.
+ * A process that ended between turns is a process loss.
+ */
+function deadGenerationReason(live: LiveGeneration): GenerationChangeReason | undefined {
+  if (live.phase === 'INVALID' || live.phase === 'CLOSED') return live.invalidReason ?? 'invalid'
+  if (live.native.isClosed?.() === true) return 'process-loss'
+  return undefined
+}
+
+/** The replaced CLI session id, when the native process reported one. */
+function recordedCliSessionId(live: LiveGeneration): string | null {
+  const id = live.native.identity.cliSessionId
+  return id.trim() === '' || id === 'pending' ? null : id
 }
 
 function blockType(block: { readonly type?: unknown }): string {

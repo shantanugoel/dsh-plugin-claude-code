@@ -3,8 +3,9 @@
 Use your Claude subscription in DeepSeek Harness (dsh). The plugin runs the
 official Claude Code CLI through the official Agent SDK. It keeps one native
 Claude session for each dsh session. This preserves Claude's signed thinking
-across tool calls. dsh keeps control of the tools, the sandbox, and the
-approvals.
+across tool calls. If the native session ends, the plugin starts a new one with
+a recorded text import of the conversation. dsh keeps control of the tools, the
+sandbox, and the approvals.
 
 ## Requirements
 
@@ -87,14 +88,23 @@ runs each call with its own sandbox and approvals.
   text. The plugin reads no bytes for that occurrence.
 - **Output cap.** A dsh `maxTokens` control maps to the official
   `CLAUDE_CODE_MAX_OUTPUT_TOKENS` environment control for that native session.
+- **Recovery.** If the Claude session stops, the plugin starts a new one and
+  sends a recorded text import of the earlier conversation plus your new input.
+  This applies after Stop, a generation timeout, a lost Claude process, a dsh
+  restore or reload, and a forked subagent. The dsh session continues. The
+  import does not keep the old signed thinking.
 
 ## Limits
 
 - The plugin does not remove old images from the live native session. A session
   with a very large number of retained images can reach the provider image
   limit. Start a recorded new generation in that case.
-- An edit to earlier messages, a model or effort change, a tool change, a
-  workspace change, or a lost Claude process requires a new Claude session.
+- A prompt, tool, model, effort, output-cap, or workspace change on a live
+  session returns `REBASE_REQUIRED`. Start a new dsh session. A closed Claude
+  session recovers automatically.
+- Recovery starts a new Claude session. It does not keep the earlier signed
+  thinking, because the new session starts a new thinking chain. The earlier
+  events stay in the dsh log.
 - A session-title call works. A compaction or summary call that replays
   conversation history returns `UNSUPPORTED_INPUT`, because a new native session
   cannot import signed history. Record a context import to start a new

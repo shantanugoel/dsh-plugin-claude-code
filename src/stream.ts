@@ -5,6 +5,27 @@ import { assertEvidenceFits, retentionProofAccepted } from './evidence.js'
 import { pluginFailure } from './errors.js'
 import type { NativeEvent } from './sdk-runtime.js'
 
+/** Why the native generation ended, for the recorded generation change. */
+export type NativeFailureReason = 'timeout' | 'process-loss'
+
+const NATIVE_FAILURE_REASON = Symbol.for('dsh-plugin-claude-code.native-failure-reason')
+
+/** Attach the generation-level reason to one native failure. */
+export function markNativeFailure<T>(error: T, reason: NativeFailureReason): T {
+  if (typeof error === 'object' && error !== null) {
+    const record = error as Record<symbol, unknown>
+    if (record[NATIVE_FAILURE_REASON] === undefined) record[NATIVE_FAILURE_REASON] = reason
+  }
+  return error
+}
+
+/** Read the reason that `markNativeFailure` attached, if any. */
+export function nativeFailureReasonOf(error: unknown): NativeFailureReason | undefined {
+  if (typeof error !== 'object' || error === null) return undefined
+  const value = (error as Record<symbol, unknown>)[NATIVE_FAILURE_REASON]
+  return value === 'timeout' || value === 'process-loss' ? value : undefined
+}
+
 export interface PendingToolCall {
   readonly id: string
   readonly name: string
@@ -259,10 +280,10 @@ export async function readUntilStop(
   let timer: ReturnType<typeof setTimeout> | undefined
   const timeout = new Promise<never>((_resolve, reject) => {
     timer = setTimeout(() => {
-      reject(pluginFailure(
+      reject(markNativeFailure(pluginFailure(
         'NATIVE_OUTCOME_UNKNOWN',
         'The native response exceeded the generation deadline. It was not retried.',
-      ))
+      ), 'timeout'))
     }, timeoutMs)
     timer.unref?.()
   })
@@ -280,8 +301,15 @@ export async function readUntilStop(
     while (true) {
       const pending = iterator.next()
       pending.catch(() => undefined)
+      const failed = pending.then(
+        (result) => result,
+        (error: unknown) => {
+          throw markNativeFailure(error, 'process-loss')
+        },
+      )
+      failed.catch(() => undefined)
       const step = await Promise.race([
-        pending.then((result) => ({ kind: 'event' as const, result })),
+        failed.then((result) => ({ kind: 'event' as const, result })),
         timeout.then(() => ({ kind: 'timeout' as const, result: undefined })),
         ...(aborted === undefined ? [] : [aborted.then(
           () => ({ kind: 'abort' as const, result: undefined }),
@@ -290,13 +318,16 @@ export async function readUntilStop(
       ])
       if (step.kind === 'abort') throw new DOMException('The model request was aborted.', 'AbortError')
       if (step.kind === 'timeout' || step.result === undefined) {
-        throw pluginFailure(
+        throw markNativeFailure(pluginFailure(
           'NATIVE_OUTCOME_UNKNOWN',
           'The native response exceeded the generation deadline. It was not retried.',
-        )
+        ), 'timeout')
       }
       if (step.result.done === true) {
-        throw pluginFailure('MALFORMED_RESPONSE', 'The native event stream ended before the response stop.')
+        throw markNativeFailure(pluginFailure(
+          'NATIVE_OUTCOME_UNKNOWN',
+          'The native event stream ended before the response stop. The outcome is unknown.',
+        ), 'process-loss')
       }
       events.push(step.result.value)
       if (step.result.value.type === 'message-stop') return events

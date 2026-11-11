@@ -3,7 +3,7 @@ import type { ImageAttachmentRef } from '@deepseek-ai/dsh-attachment'
 import { canonicalJson, contentHash } from './canonical.js'
 import { pluginFailure } from './errors.js'
 import { isNativeImageMediaType, type OutgoingBlock } from './images.js'
-import { parseReplayEnvelope, type ReplayV1 } from './replay.js'
+import { parseReplayEnvelope, type GenerationChangeV1, type ReplayV1 } from './replay.js'
 
 /** One frozen request snapshot. Later checks compare this value. They do not change it. */
 export interface RequestSnapshot {
@@ -99,6 +99,17 @@ export type Admission =
     readonly committed: readonly CanonicalMessage[]
     readonly boundMessageId: string
   }
+  | {
+    /**
+     * A recovered request starts a new native generation. The committed value
+     * is the complete frozen dsh request, so the next request compares equal.
+     * `generationChange` is the recorded import for that new generation.
+     */
+    readonly kind: 'recovered'
+    readonly requestHash: string
+    readonly committed: readonly CanonicalMessage[]
+    readonly generationChange: GenerationChangeV1
+  }
 
 interface LooseBlock {
   readonly type?: unknown
@@ -110,7 +121,7 @@ interface LooseBlock {
   readonly offloaded?: unknown
 }
 
-interface LooseMessage {
+export interface LooseMessage {
   readonly role: string
   readonly id?: unknown
   readonly content: readonly LooseBlock[]
@@ -205,6 +216,14 @@ export function requestHasReplay(messages: readonly LooseMessage[]): boolean {
   return messages.some((message) => message.role === 'assistant' && replayStateOf(message.source) !== null)
 }
 
+/**
+ * True when a new adapter instance has no live native process but the frozen
+ * request already holds earlier conversation. This needs the recorded import.
+ */
+export function requestNeedsRecovery(messages: readonly LooseMessage[]): boolean {
+  return messages.some((message) => message.role === 'assistant' || message.role === 'tool')
+}
+
 export function projectMessages(messages: readonly LooseMessage[]): CanonicalMessage[] {
   return messages.map((message) => {
     if (message.role !== 'system' && message.role !== 'user' && message.role !== 'assistant' && message.role !== 'tool') {
@@ -267,7 +286,7 @@ function projectBlock(block: LooseBlock): CanonicalBlock {
 }
 
 /** Read one message content as the blocks that this adapter sends natively. */
-function outgoingBlocks(blocks: readonly LooseBlock[]): OutgoingBlock[] {
+export function outgoingBlocks(blocks: readonly LooseBlock[]): OutgoingBlock[] {
   return blocks.map((block) => {
     if (block.type === 'text') {
       if (typeof block.text !== 'string') throw pluginFailure('UNSUPPORTED_INPUT', 'A text block has no text.')
@@ -407,7 +426,7 @@ function sameMessages(left: readonly CanonicalMessage[], right: readonly Canonic
   return canonicalJson(left) === canonicalJson(right)
 }
 
-function freezeMessages(messages: readonly CanonicalMessage[]): readonly CanonicalMessage[] {
+export function freezeMessages(messages: readonly CanonicalMessage[]): readonly CanonicalMessage[] {
   return messages.map((message) => freezeMessage(message))
 }
 

@@ -7,7 +7,7 @@ import { AuthGuard, ProcessHome } from './auth.js'
 import { createProcessAuthRunner } from './auth-process.js'
 import { blockedRouteDescriptor } from './catalog.js'
 import { officialModelDiscovery } from './model-discovery.js'
-import { SessionHeaderWorkspace } from './context.js'
+import { SessionForkOrigin, SessionHeaderWorkspace } from './context.js'
 import { DEFAULT_DEADLINES } from './deadlines.js'
 import type { ImageAttachmentReader } from './images.js'
 import { CLAUDE_CODE_SESSION_ROUTE } from './route.js'
@@ -40,6 +40,7 @@ export function apply(ctx: Context, _config: PluginConfig): void {
     spendGate: new ProductionSpendGate(),
     sessions,
     workspace: new SessionHeaderWorkspace(ctx.sessions),
+    sessionOrigin: new SessionForkOrigin(ctx.sessions),
     auth: new AuthGuard(createProcessAuthRunner()),
     home: new ProcessHome(),
     parentEnv: () => process.env,

@@ -380,7 +380,7 @@ test('a timeout after dispatch is not retried', async () => {
   })
   await assert.rejects(collect(model, textRequest('hello', 'session-timeout')), (error: unknown) => {
     assert.ok(error instanceof LlmError)
-    assert.equal(error.code, 'REBASE_REQUIRED')
+    assert.equal(error.code, 'NATIVE_OUTCOME_UNKNOWN')
     return true
   })
   assert.equal(runtime.starts.length, 1)
@@ -420,25 +420,33 @@ test('an executable native tool outside the dsh list invalidates the generation'
   })
   await assert.rejects(collect(model, textRequest('hello', 'session-tools')), (error: unknown) => {
     assert.ok(error instanceof LlmError)
-    assert.equal(error.code, 'REBASE_REQUIRED')
+    assert.equal(error.code, 'NATIVE_OUTCOME_UNKNOWN')
     return true
   })
   assert.equal(runtime.starts.length, 1)
 })
 
-test('saved replay without a live process requires a recorded import', async () => {
+test('saved replay without a live process starts a recorded new generation', async () => {
   const runtime = new ScriptedNativeRuntime()
   runtime.enqueue(textTurn('answer'))
   const firstAdapter = makeAdapter({ runtime, spendGate: gate() })
   const first = await collect(firstAdapter.model, textRequest())
   const restored = new ScriptedNativeRuntime()
+  restored.enqueue(textTurn('restored answer', 'm2'))
   const { model } = makeAdapter({ runtime: restored, spendGate: gate() })
-  await assert.rejects(collect(model, continueRequest('session-1', 'hello', first, 'next')), (error: unknown) => {
-    assert.ok(error instanceof LlmError)
-    assert.equal(error.code, 'REBASE_REQUIRED')
-    return true
-  })
-  assert.equal(restored.starts.length, 0)
+  const next = await collect(model, continueRequest('session-1', 'hello', first, 'next'))
+  assert.equal(next.at(-1)?.type, 'finish')
+  assert.equal(restored.starts.length, 1)
+  const finish = next.at(-1)
+  const response = finish?.type === 'finish' ? finish.replayState?.response : undefined
+  const change = typeof response === 'object' && response !== null
+    ? (response as Record<string, unknown>)['generationChange']
+    : undefined
+  assert.equal(typeof change, 'object')
+  assert.equal((change as Record<string, unknown>)['reason'], 'restore')
+  assert.equal(restored.inputs[0]?.content.some(
+    (block) => block.type === 'text' && block.text.includes('Historical context for a new Claude session.'),
+  ), true)
 })
 
 test('incomplete native request evidence is not an audit success', async () => {

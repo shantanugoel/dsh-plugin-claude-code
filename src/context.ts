@@ -16,6 +16,26 @@ export class UnresolvedWorkspace implements WorkspaceSource {
   }
 }
 
+/** Why a session already holds earlier conversation: a fork subagent seed. */
+export interface SessionOriginSource {
+  kind(sessionId: string): 'fork' | undefined
+}
+
+/**
+ * Read the fork origin from the session header.
+ * `isSeeded` and `origin` are creation metadata in dsh 0.2.2-rc.1.
+ */
+export class SessionForkOrigin implements SessionOriginSource {
+  constructor(private readonly sessions: Pick<SessionStore, 'get'>) {}
+
+  kind(sessionId: string): 'fork' | undefined {
+    if (sessionId.trim() === '') return undefined
+    const header = this.sessions.get(SessionId(sessionId))?.header
+    if (header === undefined) return undefined
+    return header.origin === 'subagent' || header.isSeeded === true ? 'fork' : undefined
+  }
+}
+
 /**
  * Read the workspace from the session header.
  * `Session.header.cwd` is immutable creation metadata in dsh 0.2.2-rc.1.

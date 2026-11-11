@@ -151,6 +151,7 @@ export async function startOfficialSession(config: NativeSessionConfig): Promise
     events: queue,
     sendUser: (user) => input.push(user),
     continueAfterResults: () => Promise.resolve(),
+    isClosed: () => queue.closed,
     async close() {
       input.close()
       query.close()
@@ -284,32 +285,36 @@ function sdkUserContent(content: readonly NativeContentBlock[]): SdkUserContent 
 class EventQueue implements AsyncIterable<NativeEvent> {
   private readonly events: NativeEvent[] = []
   private readonly waiters: Array<() => void> = []
-  private closed = false
+  private closedState = false
   private failure: unknown
 
   push(event: NativeEvent): void {
-    if (this.closed) return
+    if (this.closedState) return
     this.events.push(event)
     this.wake()
   }
 
   fail(error: unknown): void {
     this.failure = error
-    this.closed = true
+    this.closedState = true
     this.wake()
   }
 
   close(): void {
-    this.closed = true
+    this.closedState = true
     this.wake()
+  }
+
+  get closed(): boolean {
+    return this.closedState
   }
 
   [Symbol.asyncIterator](): AsyncIterator<NativeEvent> {
     return {
       next: async () => {
-        while (this.events.length === 0 && !this.closed) {
+        while (this.events.length === 0 && !this.closedState) {
           await new Promise<void>((resolve) => {
-            if (this.events.length > 0 || this.closed) resolve()
+            if (this.events.length > 0 || this.closedState) resolve()
             else this.waiters.push(resolve)
           })
         }

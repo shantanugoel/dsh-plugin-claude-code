@@ -133,7 +133,9 @@ generation. It is not permission to continue without thinking.
 
 The stored JSON is evidence and recovery state. It is not a prompt to paste into
 a fresh CLI process. The live CLI supplies its own original blocks to the next
-request. No component converts a signature to ordinary text.
+request. No component converts a signature to ordinary text. A rollover import
+uses the projected dsh text only. It never copies a stored signature or
+reasoning text into the new conversation.
 
 **4. Tool boundary**
 
@@ -242,32 +244,54 @@ configuration on the assumption that this audit will stop an unwanted operation.
 
 **6. Edits, compaction, model changes, and process loss**
 
-Any earlier-message edit, deletion, replacement, tool-result pruning, prompt
-change, tool-list change, or model change ends the generation. Returning to the
-old model does not make an edited prefix valid. Never reuse the old signatures
-with the changed input.
+Any earlier-message edit, deletion, replacement, or tool-result pruning ends the
+generation. Never reuse the old signatures with the changed input. A prompt,
+tool-list, model, effort, workspace, or output-cap change on a live generation
+also ends it, and this release refuses that continuation. A later release
+recovers such a change with a new generation and a recorded configuration change.
 
-If a tool call is pending, stop the native process without supplying invented
-results. Let dsh settle its existing tool records. Require a new generation
-before another model request.
+If a tool call is pending and the generation cannot continue, stop the native
+process without supplying invented results. Let dsh settle its existing tool
+records.
 
-Start the new generation at a balanced tool boundary with an explicit context
-import or summary. Record that exact input as a dsh user context message. Keep
-historical actions as quoted context, with no live tool-call IDs and no old
-thinking blocks. Keep the original events in the archive. This is a new model
-conversation; it does not preserve the old signatures across the change.
+When the live generation is invalid, closed, or absent and the next dsh request
+continues earlier conversation, recover the session automatically:
 
-Use the dsh session and compaction services to record this operation before
-`stream()`. Do not flatten the frozen transcript inside the adapter. Ordinary
-partial compaction, which keeps a signed recent tail after changing its prefix,
-must return `REBASE_REQUIRED`. A plugin compaction integration must instead
-replace all model-visible context for the new generation with its recorded
-import. A summary model call uses a separate CLI session and the same billing
-checks. It never reuses the live tool session.
+1. Split the frozen dsh request at the last assistant message. Completed tool
+   results after that message are complete outcomes. The content after them is
+   the current user input.
+2. Build one deterministic bounded text import of the earlier history. Quote
+   user and assistant text verbatim. Quote tool names, arguments, and completed
+   outcomes. Replace each image with its attachment id. State that the text is
+   historical context from a new Claude session, with no previous thinking and
+   no live tool calls.
+3. Close the old generation with a bounded close. Start one new native session
+   with the current model, effort, output cap, workspace, system prompt, and
+   tools.
+4. Send the import and the current pending content as one user turn. The dsh
+   request does not change. For a tool-result continuation, the import holds the
+   completed outcomes and the model answers as a normal user turn. The adapter
+   releases no old MCP handler.
+5. Store a `generationChange` record in the replay data of the successful turn.
+   The record holds the reason (`abort`, `timeout`, `process-loss`, `restore`,
+   `fork`, or `invalid`), the replaced generation and CLI session ids when known,
+   the imported message count, the imported prefix hash, and the timestamp. The
+   dsh log keeps this record.
 
-For the first release, process loss also returns `REBASE_REQUIRED`. Saved
-signatures alone do not establish that a new process resumes the same native
-request. Native resume at a tool boundary remains a test candidate.
+The replay data is the recorded import. This is a new model conversation. It
+does not keep the old signed thinking, and it does not claim to. The dsh session,
+the dsh log, the tools, and the approvals continue.
+
+A forked subagent uses the same rule on its first request. Its request carries
+the parent assistant replay state and no live process. The session header marks
+the fork origin, so the record uses reason `fork` instead of `restore`.
+
+An exact new user message that equals a request that was already dispatched is
+refused with `NATIVE_OUTCOME_UNKNOWN`. The adapter does not send it a second
+time.
+
+Native resume remains a test candidate. Saved signatures alone do not establish
+that a new process resumes the same native request.
 
 **7. Refuse API billing and extra usage before inference**
 
@@ -353,8 +377,9 @@ conditions pass.
 
 This design does not make the CLI a stateless transcript API. It does not allow
 arbitrary transcript import, silent mid-tool context updates, or signature reuse
-after a changed prefix. It does not remove subscription limits, establish a
-subscription-only billing switch, or prove crash-safe native resume.
+after a changed prefix. Its recorded textual import does not preserve signed
+thinking. It does not remove subscription limits, establish a subscription-only
+billing switch, or prove crash-safe native resume.
 
 It does not establish that fresh-process replay or a relay can never work.
 Those paths are outside this design. The existing measurements support one

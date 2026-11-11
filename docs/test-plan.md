@@ -2,12 +2,16 @@
 
 Use three test layers. Keep the result of each layer separate.
 
-Offline status on 2026-11-11: the Node suite covers rows O01 through O42 with
-synthetic data and the scripted runtime, and 76 tests pass. The dsh 0.2.2-rc.1
+Offline status on 2026-11-11: the Node suite covers rows O01 through O52 with
+synthetic data and the scripted runtime, and 90 tests pass. The dsh 0.2.2-rc.1
 LLM service, session store, and compaction balance functions are loaded in that
 suite. The real dsh LLM runtime is mounted for file and image projection tests.
 The agent loop is not driven. No offline command starts the installed Claude
 binary. The distribution checks I01 to I05 also passed on 2026-11-11.
+
+Rows O43 to O52 cover generation recovery with a recorded textual import. They
+are offline tests. No live model request measured the rollover, and the tests
+claim no signed-thinking retention across it.
 
 A separate live probe on 2026-11-11 used the official SDK 0.3.322 and Claude
 Code 2.1.319. It read one synthetic image from a user message and one synthetic
@@ -71,17 +75,17 @@ result delivery, opened session, close request, and remaining child handle.
 | O16 | Earlier message content, identity, or order changes | `REBASE_REQUIRED` before continuation |
 | O17 | New dsh assistant ID after finish | Bind once only when the expected publication matches |
 | O18 | Missing or changed replay state | `REPLAY_STATE_INVALID`; no silent thinking removal |
-| O19 | Prompt, tools, model, reasoning control, or workspace changes | Refuse or record the required new generation |
+| O19 | Prompt, tools, model, reasoning control, or workspace changes on a live generation | `REBASE_REQUIRED`; a closed generation recovers with one recorded import |
 | O20 | User/developer update appears inside a tool-result suffix | Refuse; do not silently relocate the update |
 | O21 | Two sessions in different workspaces | Separate processes, prompts, maps, and results |
 | O22 | Title or summary call during a parked tool | Separate auxiliary session; original call stays parked |
 | O23 | Abort during generation or result wait | Aborted finish; no fabricated result; native process closed |
-| O24 | Input delivered, then timeout or process exit | Unknown outcome; no automatic replay or retry |
+| O24 | Input delivered, then timeout or process exit | Unknown outcome; no automatic replay or retry; a later new request recovers with a recorded import |
 | O25 | Retry wrapper repeats a previously dispatched request | Session guard prevents a second dispatch |
 | O26 | CLI-added executable tool or changed context | Reject certification or invalidate the generation |
 | O27 | Compaction or context import with an open tool pair | Refuse the reset until a balanced boundary |
 | O28 | Recorded full reset and subsequent request | New generation; no reused signatures or repeated tool actions |
-| O29 | Restore with saved replay state and no native process | `REBASE_REQUIRED`; no false native resume |
+| O29 | Restore with saved replay state and no native process | One new generation with reason `restore`; no false native resume; the next request continues it |
 | O30 | Plugin unload, stalled iterator, and concurrent stream | Owned processes reaped; stable busy/error outcome |
 | O31 | Unknown finish, control, role, or model | Explicit error; no fallback and no ignored field |
 | O32 | Native request evidence missing, redacted, or truncated | Retention proof unavailable; do not report audit success |
@@ -95,6 +99,16 @@ result delivery, opened session, close request, and remaining child handle.
 | O40 | A compaction-style auxiliary call with assistant history | `UNSUPPORTED_INPUT` with no native session start |
 | O41 | Two leading user messages | One native prompt with both content lists in order |
 | O42 | Assistant usage that reports cache read and write tokens | The usage chunk keeps both cache counts |
+| O43 | Abort mid-turn, then one new user message | One dsh stream finishes on one new native session; the import has the earlier user text and the new input; replay records reason `abort`; the next request uses the same new session |
+| O44 | Abort before dispatch, then one new user message | The pending input from the aborted request is in the import; replay records reason `abort` |
+| O45 | Generation deadline, then one new user message | Replay records reason `timeout`; the old process is closed; the next request continues the new session |
+| O46 | Native process ends between turns | Replay records reason `process-loss`; one new native session; no duplicate prompt; one dsh session |
+| O47 | Native process ends during a tool wait | The completed tool outcome is quoted in the import; the adapter invents no tool result; replay records reason `process-loss` |
+| O48 | Restore or plugin reload with saved replay state | One new generation with reason `restore`; no false native resume; the next request continues it |
+| O49 | Forked subagent first request with parent replay state | One answer on one new generation with reason `fork`; the parent process is not reused |
+| O50 | Restored tool-result continuation with no live process | The import holds the completed outcome; one dsh stream; no old MCP handler is released |
+| O51 | Two consecutive recoveries | Each turn stores one `generationChange`; the generation ids increase; one dsh session |
+| O52 | Import content and bounds | No signature, thinking text, image bytes, or tool-call ids; the text is deterministic and bounded; an exact repeat of a dispatched request is refused with `NATIVE_OUTCOME_UNKNOWN` |
 
 Use independent expected response data for thinking tests. A comparison that
 derives both expected and actual data from the altered request cannot detect a
@@ -132,8 +146,8 @@ Required checks:
 - The real assembler stores an empty reasoning block and response replay data.
 - A completed tool-call batch passes through the actual guarded tool pipeline.
 - dsh logs the response and complete outcomes before the next stream releases them.
-- Export and restore preserve replay JSON exactly. A missing live process still
-  requires a new recorded generation.
+- Export and restore preserve replay JSON exactly. A missing live process starts
+  one recorded new generation, and the import record stays in the replay data.
 - Context replacement uses real surface coordinates and persistence flushes.
   The old events remain available in the raw log.
 - Session disposal and plugin removal close the exact owned native sessions.
@@ -210,8 +224,10 @@ proof, and live content/retention tests on the advertised runtime pair. Report
 the live negative-test status explicitly. If it is unavailable, do not advertise
 full live tamper certification. Do not spend money to test a no-spend assertion.
 
-Keep native resume, binary protocol changes, image offload on long sessions,
-document input, and additional content types outside the compatibility claim
-until their own measurements pass. The 2026-11-11 image probe measured one image
+Offline rows O43 to O52 cover generation recovery. No live measurement has run
+for the rollover. The import is ordinary user content, and it is not proof of
+signed-thinking retention. Keep native resume, binary protocol changes, image
+offload on long sessions, document input, and additional content types outside
+the compatibility claim until their own measurements pass. The 2026-11-11 image probe measured one image
 in a user message and one image in a tool result. It did not measure many images,
 image retention with signed thinking, or subagent image delivery.

@@ -91,6 +91,8 @@ export interface NativeSession {
   sendUser(input: NativeUserInput): Promise<void>
   continueAfterResults(): Promise<void>
   close(): Promise<void>
+  /** True after the native process or event stream ended. */
+  isClosed?(): boolean
 }
 
 export interface NativeRuntime {

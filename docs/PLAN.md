@@ -21,6 +21,12 @@ installed the plugin from a local Git spec, and `--dump-config` listed the
 `claude-code-session` entry. The documented GitHub spec check is pending the
 push.
 
+Status, 2026-11-11 (issue #2): M5 adds generation rollover recovery. The offline
+suite has 90 tests. A closed or absent native generation recovers with one
+recorded textual import (D21), and the replay data holds the change record. No
+live model request measured the rollover. Signed-thinking retention across a
+rollover is not claimed.
+
 ## Fixed requirements
 
 - Minimum target: dsh 0.2.2-rc.1. Check each advertised later version.
@@ -130,8 +136,9 @@ outcomes. A complete synthetic dsh loop performs two steps on one fake session.
 
 - [x] Find the authoritative current workspace service and test it with two
   sessions. Do not infer it from the dsh server's process directory.
-- [x] Gate workspace, model, prompt, and tool changes before continuation.
-  Return `REBASE_REQUIRED` until the recorded reset operation is implemented.
+- [x] Gate workspace, model, prompt, and tool changes on a live generation
+  before continuation. Return `REBASE_REQUIRED` until the configuration-change
+  rollover exists.
 - [x] Find the supported dsh session replacement, compaction, and flush APIs.
   Confirm their persistence lifecycle; do not invent a hook name.
 - [x] Implement a plugin service/command that records a full context import at
@@ -141,12 +148,24 @@ outcomes. A complete synthetic dsh loop performs two steps on one fake session.
 - [x] Reject partial compaction that leaves a signed tail bound to a changed prefix.
 - [x] Queue user input through dsh's supported inbox behavior. Reject an unexpected
   mid-tool context insertion instead of moving it inside `stream()`.
-- [x] On restore, reject an old generation with no live native process. Offer the
-  recorded context-import operation. Native resume is outside this milestone.
+- [x] Recover an invalid, closed, or absent generation with one recorded
+  textual import: abort, timeout, process loss, restore, plugin reload, and a
+  forked subagent. Split the frozen request into history and pending content for
+  a new user turn, a tool-result continuation, and a first request with replay.
+- [x] Quote completed tool outcomes and omit reasoning text, signatures, image
+  bytes, and tool-call ids. Bound the import and keep it deterministic. Send the
+  import and the pending content as one user turn on a new native session with
+  the current configuration.
+- [x] Record `generationChange` in the successful replay data with the reason,
+  the replaced ids, the imported count, the prefix hash, and the time. Validate
+  the record on read.
+- [x] Add offline tests O43 to O52. Native resume is outside this milestone.
 - [x] Dispose only owned sessions/processes on abort, agent disposal, or plugin unload.
 
 Completion: minimum-version dsh tests cover edit, compaction, workspace change,
-model change, tool change, plugin unload, export/restore, and missing replay state.
+model change, tool change, plugin unload, export/restore, missing replay state,
+and generation recovery after abort, timeout, process loss, restore, reload, and
+fork.
 
 ## M6. Add model catalog, settings, and installation checks
 

@@ -12,7 +12,7 @@ import { ClaudeCodeAdapter } from '../src/adapter.js'
 import type { DiscoveredModel } from '../src/model-discovery.js'
 import { DEFAULT_DEADLINES, type Deadlines } from '../src/deadlines.js'
 import { AuthGuard, type AuthCommand, type AuthCommandResult } from '../src/auth.js'
-import type { WorkspaceSource } from '../src/context.js'
+import type { SessionOriginSource, WorkspaceSource } from '../src/context.js'
 import type { ImageAttachmentReader } from '../src/images.js'
 import { SessionManager } from '../src/session-manager.js'
 import type { SpendGate } from '../src/spend-gate.js'
@@ -93,6 +93,7 @@ export function makeAdapter(input: {
   readonly spendGate: SpendGate
   readonly runner?: RecordingRunner
   readonly workspace?: WorkspaceSource
+  readonly sessionOrigin?: SessionOriginSource
   readonly attachments?: () => ImageAttachmentReader | undefined
   readonly settingsFiles?: readonly string[]
   readonly parentEnv?: NodeJS.ProcessEnv
@@ -114,6 +115,7 @@ export function makeAdapter(input: {
     spendGate: input.spendGate,
     sessions: new SessionManager(),
     workspace: input.workspace ?? { current: () => workspace },
+    ...(input.sessionOrigin === undefined ? {} : { sessionOrigin: input.sessionOrigin }),
     auth: new AuthGuard(runner),
     home: { current: () => home },
     parentEnv: () => input.parentEnv ?? {

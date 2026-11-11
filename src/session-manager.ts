@@ -3,6 +3,7 @@ import type { ClaudeEffort } from './effort.js'
 import { pluginFailure } from './errors.js'
 import type { McpBridge } from './mcp-bridge.js'
 import type { NativeEvent, NativeSession } from './sdk-runtime.js'
+import type { GenerationChangeReason } from './replay.js'
 import type { PendingToolCall } from './stream.js'
 import type { CanonicalMessage, PendingPublication } from './transcript.js'
 
@@ -40,6 +41,10 @@ export interface LiveGeneration {
   committed: readonly CanonicalMessage[]
   pending: PendingPublication | undefined
   dispatchedHash: string | undefined
+  /** The complete frozen request at the last dispatch. */
+  dispatchedMessages: readonly CanonicalMessage[] | undefined
+  /** Why this generation became invalid, when the reason is known. */
+  invalidReason: GenerationChangeReason | undefined
 }
 
 /**

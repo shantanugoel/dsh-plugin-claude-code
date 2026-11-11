@@ -79,6 +79,10 @@ export class ScriptedNativeSession implements NativeSession {
     this.wake()
   }
 
+  isClosed(): boolean {
+    return this.closed
+  }
+
   private async *iterate(): AsyncGenerator<NativeEvent> {
     while (true) {
       const next = this.queue.shift()

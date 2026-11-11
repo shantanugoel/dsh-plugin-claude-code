@@ -24,7 +24,8 @@ Planned source files:
 | `src/sdk-runtime.ts` | Official SDK process and input queue |
 | `src/session-manager.ts` | Session map, generation locks, and state |
 | `src/transcript.ts` | Frozen input validation, projection, and hashes |
-| `src/replay.ts` | Versioned replay data and consistency checks |
+| `src/replay.ts` | Versioned replay data, generation-change records, and consistency checks |
+| `src/rollover.ts` | Deterministic bounded textual import and recovery boundary split |
 | `src/mcp-bridge.ts` | Tool definitions, waiting handlers, result mapping |
 | `src/stream.ts` | Partial events, completed blocks, usage, and finish |
 | `src/context.ts` | dsh workspace and prompt integration |
@@ -52,8 +53,9 @@ Read `GenerateOptions.sessionId`, `messages`, `system`, `tools`, model,
 reasoning controls, limits, and abort signal. Reject an unsupported control
 before dispatch. Do not silently ignore sampling fields or stop sequences.
 A model that reports effort support offers that model's levels. The selected
-level is fixed for the native generation. A later change returns
-`REBASE_REQUIRED`.
+level is fixed for the native generation. A later change on a live generation
+returns `REBASE_REQUIRED`. A closed or absent generation recovers with a new
+generation and one recorded textual import.
 
 Resolve every model with `inputModalities: ['text', 'image']`. The catalog entry
 uses the same value. An image-capable route receives ImageBlock values. A
@@ -161,7 +163,8 @@ call ID; it can never release a conversation's pending tool results.
 | `GENERATING` | Receive a completed final response | `READY` |
 | `WAITING_FOR_RESULTS` | Validate the full dsh result batch and release it | `GENERATING` |
 | Any live state | Abort, divergence, timeout, unknown outcome, or process loss | `INVALID` |
-| `INVALID` | Finish cleanup and log a reset requirement | `CLOSED` |
+| `INVALID` | A conversation request with new content recovers one new generation | `CLOSED`, then `STARTING` |
+| `INVALID` | Plugin unload or no further request | `CLOSED` |
 
 Serialize admission for each key. Reject a concurrent stream with `SESSION_BUSY`;
 do not serialize a tool continuation behind an unresolved earlier stream. The
@@ -170,6 +173,14 @@ earlier dsh stream has already finished at the tool boundary.
 Record when input crosses the native boundary. A timeout after that point has
 an unknown inference outcome. Do not retry it as a fresh request. A generation
 that enters `INVALID` never returns to `READY`.
+
+A recovery admission has kind `recovered`. It writes the complete frozen request
+to `committed`, so the next request compares equal and its publication binds.
+The new generation starts a new publication. It does not bind the pending
+publication of the replaced generation.
+
+An exact repeat of a request that the failed generation already dispatched
+returns `NATIVE_OUTCOME_UNKNOWN`. The adapter sends no second copy of that input.
 
 ## Transcript and replay data
 
@@ -215,9 +226,40 @@ interface ReplayV1 {
   nativeRequestRecord: unknown;
   nativeResponseBlocks: readonly unknown[];
   toolNameMap: Readonly<Record<string, string>>;
+  generationChange?: GenerationChangeV1;
 }
 // Store as { response: replayV1 }; omit ReplayEnvelope.blocks.
 ```
+
+The recovery record in the replay envelope has this shape:
+
+```ts
+interface GenerationChangeV1 {
+  reason: 'abort' | 'timeout' | 'process-loss' | 'restore' | 'fork'
+    | 'configuration-change' | 'image-budget' | 'invalid';
+  fromGenerationId: string | null;
+  fromCliSessionId: string | null;
+  importedMessageCount: number;
+  importedPrefixHash: string;
+  createdAt: string; // ISO time
+  changedFields?: readonly string[];
+}
+```
+
+The recorded import has these rules:
+
+- Split the frozen request at the last assistant message. A tool batch after
+  that message is a complete outcome. The rest is the current user input.
+- Quote user and assistant text verbatim. Quote tool names, arguments, and
+  completed outcomes. Omit reasoning text and tool-call ids.
+- Replace each historical image with its attachment id. Read no image bytes.
+- State that the text is historical context from a new Claude session with no
+  previous thinking and no live tool calls.
+- Bound the text with a documented maximum and an explicit omission mark. The
+  same projected history returns the same text.
+- Do not send old native blocks as the import. The dsh log keeps them.
+- The successful turn stores one record. The import, not a saved signature, is
+  the recovery evidence.
 
 Use runtime validation for this data. Add response grouping and ordering fields
 as needed; they must remain lossless JSON. Do not recursively embed earlier
@@ -294,13 +336,18 @@ Preserve the leading prompt as required by dsh. The exact import states that
 it is historical context, includes completed tool outcomes, and includes no old
 signed thinking or active tool IDs. Preserve the old events in the raw log.
 
+The adapter also recovers a closed or absent generation without a user command.
+It starts a new native session and sends the bounded textual import plus the
+current pending content. It records the change in the replay data of the
+successful turn. This path does not change the frozen dsh request.
+
 Use public session and compaction APIs. Verify replacement coordinates and flush
 durability through the agent-owned persistence lifecycle. A detached
 `ctx.sessions.create()` does not itself prove persistence. Do not invent an
 `agent/rebase` hook or mutate the agent's current frozen request.
 
-Ship `REBASE_REQUIRED` first if automatic integration is not complete. Later add
-a command/service that records a complete import before another request. Do not
+A fixed-configuration change on a live generation returns `REBASE_REQUIRED`.
+The next release must recover it with a recorded `configuration-change`. Do not
 mark edits and compaction as supported until their integration tests pass.
 
 ## Authentication and spend checks
@@ -347,7 +394,7 @@ their names. They are non-retryable unless the failure is proven pre-dispatch.
 | `UNSUPPORTED_INPUT` | A content type, schema, role, or control cannot be preserved |
 | `TOOL_RESULT_MISMATCH` | Result IDs, counts, order, or data disagree |
 | `MALFORMED_RESPONSE` | Completed model output cannot be used safely |
-| `NATIVE_OUTCOME_UNKNOWN` | Dispatch or result delivery may have occurred |
+| `NATIVE_OUTCOME_UNKNOWN` | Dispatch or result delivery may have occurred, or the request repeats a dispatched request after a failed generation |
 
 An abort yields dsh's `aborted` finish and closes the native generation. Do not
 send a fabricated tool result to make the SDK stop. Close gracefully, then end
