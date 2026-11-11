@@ -427,9 +427,11 @@ export class ClaudeCodeAdapter extends LlmAdapter {
     // until their deadline.
     let userContent: readonly NativeContentBlock[] | undefined
     let toolResults: readonly NativeToolResult[] | undefined
+    let trailingContent: readonly (readonly NativeContentBlock[])[] = []
     try {
       if (admission.kind === 'tool-results') {
         toolResults = await this.prepareResults(admission.results, options.signal)
+        trailingContent = await this.prepareTrailingContent(admission.trailing, options.signal)
       } else if (admission.kind === 'first-user' || admission.kind === 'next-user') {
         userContent = await this.prepareContent(admission.userContent, options.signal)
       }
@@ -438,6 +440,13 @@ export class ClaudeCodeAdapter extends LlmAdapter {
       throw error
     }
     if (admission.kind === 'tool-results' && toolResults !== undefined) {
+      // The CLI surfaces queued user input in the same model request as the
+      // tool result only when that input arrives before the result is
+      // released. The measurement in docs/evidence/trailing-context-probe
+      // records that order.
+      for (const content of trailingContent) {
+        await live.native.sendMidTurnUser({ content })
+      }
       live.bridge.stage(toolResults)
       if (live.pending !== undefined) {
         live.pending = { ...live.pending, boundMessageId: admission.boundMessageId }
@@ -447,6 +456,28 @@ export class ClaudeCodeAdapter extends LlmAdapter {
       ? () => live.native.continueAfterResults()
       : () => live.native.sendUser({ content: userContent ?? [] })
     yield* this.dispatchTurn(live, admission, options, send)
+  }
+
+  /**
+   * Prepare the user messages that dsh placed after a tool-result batch.
+   * A non-offloaded image is refused: the measured CLI mid-turn surface is a
+   * text system message, and this path has no image measurement.
+   */
+  private async prepareTrailingContent(
+    trailing: readonly (readonly OutgoingBlock[])[],
+    signal: AbortSignal | undefined,
+  ): Promise<readonly (readonly NativeContentBlock[])[]> {
+    const prepared: (readonly NativeContentBlock[])[] = []
+    for (const blocks of trailing) {
+      if (blocks.some((block) => block.type === 'image' && block.offloaded !== true)) {
+        throw pluginFailure(
+          'UNSUPPORTED_INPUT',
+          'An image in a trailing mid-turn user message is not supported.',
+        )
+      }
+      prepared.push(await this.prepareContent(blocks, signal))
+    }
+    return prepared
   }
 
   /** Start the first native generation for this dsh session. */

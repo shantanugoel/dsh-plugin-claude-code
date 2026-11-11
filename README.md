@@ -102,6 +102,10 @@ runs each call with its own sandbox and approvals.
   text. The plugin reads no bytes for that occurrence.
 - **Output cap.** A dsh `maxTokens` control maps to the official
   `CLAUDE_CODE_MAX_OUTPUT_TOKENS` environment control for that native session.
+- **Messages while a tool runs.** If you send a message while a tool is running,
+  or if dsh adds a reminder after tool results, the plugin delivers it inside
+  the same Claude turn. The text stays a separate message. The plugin never
+  moves it into the tool result.
 - **Recovery and configuration changes.** If the Claude session stops, or if
   the prompt, tools, model, effort, output cap, or workspace change, the plugin
   starts a new Claude session and sends a recorded text import of the earlier
@@ -152,6 +156,8 @@ message.
   session continues.
 - An edit to earlier messages still returns `REBASE_REQUIRED`. Start a new dsh
   session for an edit.
+- A mid-turn message can contain text. An image in a message that arrives while
+  a tool runs returns an error until a measurement covers that path.
 - Recovery starts a new Claude session. It does not keep the earlier signed
   thinking, because the new session starts a new thinking chain. The earlier
   events stay in the dsh log.

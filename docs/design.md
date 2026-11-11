@@ -68,6 +68,14 @@ pressure check needs `context.contextWindow` from the resolved model. Its
 scripted runtime. The real model values, the static fallback, and the dsh token
 meter remain unverified in a live dsh profile.
 
+On 2026-11-11 a third direct SDK probe measured a trailing user message after a
+parked tool result. With the trailing message queued before the result release,
+the CLI sent it in the same native request as a CLI-generated system-role
+mid-turn context message after the `tool_result`, and the model answered once.
+With the opposite order, the trailing message became a second native turn. See
+[the trailing-context probe](evidence/trailing-context-probe-2026-11-11.json).
+This probe did not run the plugin inside dsh.
+
 The request also includes `DeferredToolPlaceholder` and `advisor`, although the
 startup event lists only `mcp__dsh__probe`. Thus, the startup tool list alone is
 insufficient evidence of the native tool list. This measurement prevents release
@@ -114,11 +122,13 @@ request. A local hash detects differences; it does not validate an Anthropic
 signature.
 
 Support a new session with a recorded initial input and later user turns. While
-a native tool call is pending, accept only its complete dsh tool-result batch.
-Queue new user input until the tool turn ends. Refuse an unsupported developer
-message or other context insertion at that boundary. Do not silently move it to
-another position. The dsh companion integration must keep queued user input out
-of the current frozen request. If it cannot, refuse that continuation.
+a native tool call is pending, accept the complete dsh tool-result batch. dsh
+can put user messages after the results in the same request. Deliver those
+messages inside the same native turn: queue them on the native input queue
+before the result release, as the measurement shows. Never move content into a
+tool result and never drop it. Refuse a developer or system message at that
+boundary. The dsh companion integration must keep other queued user input out of
+the current frozen request. If it cannot, refuse that continuation.
 
 The adapter does not know dsh's next assistant message ID when it emits chunks.
 Keep an expected publication record. Bind the new durable ID only after the next
@@ -187,6 +197,14 @@ At the completed native model-response boundary:
    its output collector before releasing the MCP replies.
 5. Supply the exact results, including errors and approval denials. The CLI can
    then make its next model request.
+
+If user messages follow the result batch in the same frozen request, send them
+on the native input queue before step 5 releases the results. The measured CLI
+puts them in the same native request, after the `tool_result`, as a
+CLI-generated system-role mid-turn message. This keeps one dsh stream and the
+same native session. A developer or system message at that boundary is refused.
+A non-offloaded image is refused until a measurement covers it. The committed
+dsh transcript keeps every trailing message.
 
 Stage results by native tool-use ID, independently of MCP callback arrival order.
 This avoids a deadlock if the CLI invokes handlers one at a time. Release the
@@ -527,6 +545,11 @@ does not keep the native signed prefix across the compaction.
 
 It does not establish that fresh-process replay or a relay can never work.
 Those paths are outside this design. The existing measurements support one
+
+It does not establish a measured image path for a trailing mid-turn message, and
+it does not claim signed-thinking retention across such a message. It does not
+establish that fresh-process replay or a relay can never work. Those paths are
+outside this design. The existing measurements support one
 persistent CLI tool turn, an offline preservation check, and two synthetic
 image paths through the official SDK. They do not close other paths or establish
 a production-ready plugin.

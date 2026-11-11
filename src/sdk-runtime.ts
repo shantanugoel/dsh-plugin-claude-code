@@ -109,6 +109,13 @@ export interface NativeSession {
   readonly events: AsyncIterable<NativeEvent>
   readonly identity: NativeSessionIdentity
   sendUser(input: NativeUserInput): Promise<void>
+  /**
+   * Send user content that the native runtime must surface inside the running
+   * turn. The adapter calls this while a tool handler is parked, before it
+   * releases the tool result. The measured CLI behavior puts this content in
+   * the same API request as the tool result.
+   */
+  sendMidTurnUser(input: NativeUserInput): Promise<void>
   continueAfterResults(): Promise<void>
   close(): Promise<void>
   /** True after the native process or event stream ended. */

@@ -1,0 +1,93 @@
+{
+  "measurement_date": "2026-11-11",
+  "issue": 4,
+  "transport": "official Agent SDK 0.3.322 streaming input; Claude Code CLI 2.1.319",
+  "auth_route": {
+    "authMethod": "claude.ai",
+    "apiProvider": "firstParty",
+    "subscriptionType": "pro"
+  },
+  "probe": {
+    "purpose": "Find where the CLI places a trailing user message that arrives while an MCP tool handler is parked.",
+    "synthetic": true,
+    "private": true,
+    "tool": "one in-process SDK MCP tool named probe with no arguments; its handler parks until the probe releases it",
+    "tool_token": "TOOL_TOKEN_7Q",
+    "initial_user_message": "Call the probe tool exactly once with no arguments. Then write the exact token that the tool returns.",
+    "trailing_user_message": "TRAILING_MARKER_9Q: also write the word PINEAPPLE after the token.",
+    "cases": [
+      "before_release: push the trailing user message on the streaming input queue, wait, then release the tool result",
+      "after_release: release the tool result, then push the trailing user message"
+    ]
+  },
+  "capture_method": {
+    "primary": "The official CLI diagnostic environment variable OTEL_LOG_RAW_API_BODIES pointed at a private file directory. It wrote each raw /v1/messages request body and its response. The probe read only the sdk query-source records.",
+    "why_not_session_log": "This agent session has a workspace-write file sandbox. The CLI tried to create the session transcript under ~/.claude/projects and the sandbox refused it with EPERM. The CLI debug log records 'Session file materialize failed (EPERM)' and 'Transcript write failed (EPERM)'. The session-log request records were therefore not available to this probe.",
+    "no_direct_http": true,
+    "no_credential_read": true,
+    "no_client_identity_change": true,
+    "raw_capture_committed": false
+  },
+  "results": {
+    "before_release": {
+      "native_turns": 1,
+      "model_requests": 2,
+      "final_answer": "TOOL_TOKEN_7Q PINEAPPLE",
+      "answer_contains_tool_token": true,
+      "answer_contains_trailing_word": true,
+      "second_request_messages": [
+        {
+          "index": 0,
+          "role": "user",
+          "content": "one tool_result block for the probe tool call, with the text TOOL_TOKEN_7Q and no trailing text"
+        },
+        {
+          "index": 1,
+          "role": "system",
+          "content": "The user sent a new message while you were working:\\nTRAILING_MARKER_9Q: also write the word PINEAPPLE after the token.\\n\\nThis is how Claude Code surfaces messages the user sends mid-turn - within the running turn, often alongside the next tool result, rather than as a separate conversation turn. Address the message above as you continue this turn."
+        }
+      ],
+      "trailing_content_inside_tool_result": false,
+      "trailing_content_dropped": false,
+      "trailing_content_separate_user_role_message": false,
+      "one_dsh_stream_possible": true
+    },
+    "after_release": {
+      "native_turns": 2,
+      "model_requests": 3,
+      "first_final_answer": "TOOL_TOKEN_7Q",
+      "second_final_answer": "TOOL_TOKEN_7Q PINEAPPLE",
+      "second_request_has_trailing_content": false,
+      "third_request_role_for_trailing_content": "user",
+      "trailing_message_became_a_new_native_turn": true,
+      "one_dsh_stream_possible": false
+    }
+  },
+  "conclusion": [
+    "To deliver trailing dsh user or context content inside the same native turn, the adapter must send it on the streaming input queue before it releases the tool results.",
+    "In that order the CLI adds the content to the same API request as the tool_result, as a CLI-generated system-role mid-turn context message immediately after the tool_result message. It does not put the content inside the tool_result and does not drop it.",
+    "The model received both inputs in one turn and answered once.",
+    "If the adapter releases the tool result first, the CLI finishes the tool turn before it reads the trailing message. The trailing message then becomes a new user turn with its own model request and answer. One dsh stream cannot represent that correctly.",
+    "The adapter must keep the same native session and must not fold the trailing content into the tool result."
+  ],
+  "implementation_decision": {
+    "order": "queue the trailing user content, then release the tool-result batch",
+    "item": "extend the waiting-for-results admission to split the suffix into the leading tool-result batch and the trailing user messages; keep both in the committed dsh transcript",
+    "image_policy": "a non-offloaded image in a trailing mid-turn message is refused before native dispatch; this probe measured text only",
+    "recorded_evidence": "docs/decisions.md D31"
+  },
+  "proven": [
+    "The official SDK accepts a user message on the streaming input queue while an MCP tool handler is parked.",
+    "With trailing input queued before the tool result is released, the CLI delivered both inputs in one native turn and one model request followed the tool result.",
+    "The CLI placed the trailing text in a system-role mid-turn message after the tool_result block, not inside the tool_result.",
+    "With the opposite order, the CLI ended the tool turn first and started a second native turn for the trailing message."
+  ],
+  "not_proven": [
+    "The plugin's own dsh profile path; this probe used the SDK directly.",
+    "The CLI session-log request records; this session's file sandbox blocked transcript writes, so raw API bodies from the official diagnostic were used instead.",
+    "An image or a structured content block in a trailing mid-turn message.",
+    "Several separate trailing messages in one boundary, or the exact message boundaries that the CLI preserves.",
+    "Behavior on another CLI or SDK version.",
+    "Signed-thinking retention across a mid-turn user message."
+  ]
+}

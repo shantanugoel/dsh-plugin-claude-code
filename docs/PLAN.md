@@ -61,6 +61,12 @@ Status, 2026-11-11 (issue #12): no dsh release later than 0.2.2-rc.1 exists. The
 plugin keeps the exact `engines.dsh` pin (D26), the README agrees, and the
 plugin manager refuses an untested engine requirement with a clear message.
 
+Status, 2026-11-11 (issue #4): M5 adds trailing user content after a tool-result
+batch. The offline suite has 159 tests. The adapter delivers the trailing user
+messages inside the same native turn before it releases the tool results (D31).
+A direct SDK probe on SDK 0.3.322 and CLI 2.1.319 measured this order. The probe
+did not run the plugin in dsh, and it did not measure an image.
+
 ## Fixed requirements
 
 - Minimum target: dsh 0.2.2-rc.1, the only published release. Keep the exact
@@ -186,8 +192,15 @@ outcomes. A complete synthetic dsh loop performs two steps on one fake session.
 - [x] Keep completed historical tool outcomes as quoted context. Remove active
   call IDs and old thinking from the new context, while retaining the original log.
 - [x] Reject partial compaction that leaves a signed tail bound to a changed prefix.
-- [x] Queue user input through dsh's supported inbox behavior. Reject an unexpected
-  mid-tool context insertion instead of moving it inside `stream()`.
+- [x] Queue user input through dsh's supported inbox behavior. Split a
+  waiting-for-results suffix into the tool-result batch and trailing user
+  messages. Deliver the trailing messages inside the same native turn before the
+  result release, as the direct SDK probe measured. Never move the content into
+  a tool result. Refuse a developer or system message at that boundary, and
+  refuse a non-offloaded image in a trailing message.
+- [x] Add offline tests O74 to O78 for a reminder after results, two trailing
+  messages, a system or developer message at the boundary, a trailing image,
+  and trailing content with a recorded rollover.
 - [x] Recover an invalid, closed, or absent generation with one recorded
   textual import: abort, timeout, process loss, restore, plugin reload, and a
   forked subagent. Split the frozen request into history and pending content for
@@ -215,7 +228,8 @@ outcomes. A complete synthetic dsh loop performs two steps on one fake session.
 Completion: minimum-version dsh tests cover edit, compaction, workspace change,
 model change, tool change, plugin unload, export/restore, missing replay state,
 generation recovery after abort, timeout, process loss, restore, reload, and
-fork, and fixed-configuration changes with a recorded change.
+fork, fixed-configuration changes with a recorded change, and trailing user
+content after a tool-result batch.
 
 ## M6. Add model catalog, settings, and installation checks
 

@@ -2,8 +2,8 @@
 
 Use three test layers. Keep the result of each layer separate.
 
-Offline status on 2026-11-11: the Node suite covers rows O01 through O73 with
-synthetic data and the scripted runtime, and 152 tests pass. The dsh 0.2.2-rc.1
+Offline status on 2026-11-11: the Node suite covers rows O01 through O78 with
+synthetic data and the scripted runtime, and 159 tests pass. The dsh 0.2.2-rc.1
 LLM service, session store, and compaction balance functions are loaded in that
 suite. The real dsh LLM runtime is mounted for file and image projection tests
 and for the native error finish test. The agent loop is not driven. No offline
@@ -16,11 +16,12 @@ O61 cover a fixed-configuration change with the recorded-import mechanism. Rows
 O62 to O66 cover the context-capacity cache and the flat-text compaction summary
 import. Rows O67 to O69 cover session-disposal cleanup and the auth acceptance
 cache. Rows O70 and O71 cover the auxiliary session release. Rows O72 and O73
-cover the resolved model display name and the absent default effort. They are
-offline tests. No live model request measured the rollover, a
-provider error, a configuration change, a live token meter, a live dsh
-compaction, a session disposal, or a live auth command, and the tests claim no
-signed-thinking retention across any rollover or import.
+cover the resolved model display name and the absent default effort. Rows O74 to
+O78 cover trailing user content inside a waiting tool turn. They are offline
+tests. No live model request measured the rollover, a provider error, a
+configuration change, a live token meter, a live dsh compaction, or an image in
+a trailing mid-turn message, and the tests claim no signed-thinking retention
+across any rollover or import.
 
 A separate live probe on 2026-11-11 used the official SDK 0.3.322 and Claude
 Code 2.1.319. It read one synthetic image from a user message and one synthetic
@@ -85,7 +86,7 @@ result delivery, opened session, close request, and remaining child handle.
 | O17 | New dsh assistant ID after finish | Bind once only when the expected publication matches |
 | O18 | Missing or changed replay state | `REPLAY_STATE_INVALID`; no silent thinking removal |
 | O19 | Prompt, tools, model, reasoning control, or workspace changes on a live generation | One new generation with the current configuration and a recorded `configuration-change`; an earlier-prefix edit still returns `REBASE_REQUIRED` |
-| O20 | User/developer update appears inside a tool-result suffix | Refuse; do not silently relocate the update |
+| O20 | User message after a tool-result batch, or a developer/system message at that boundary | Deliver the user message inside the same native turn before the result release; refuse the developer or system message |
 | O21 | Two sessions in different workspaces | Separate processes, prompts, maps, and results |
 | O22 | Title or summary call during a parked tool | Separate auxiliary session; original call stays parked |
 | O23 | Abort during generation or result wait | Aborted finish; no fabricated result; native process closed |
@@ -139,6 +140,11 @@ result delivery, opened session, close request, and remaining child handle.
 | O71 | An aborted auxiliary call while a conversation generation is live | The conversation entry and process stay live and the next conversation request continues the same native session; an auxiliary release of a conversation key removes nothing |
 | O72 | A model id in the discovered catalog | `resolveModel` name equals the catalog display name; the id stays exact; the effort levels are only the reported ones; `reasoning` has no `defaultEffort` |
 | O73 | A model id with no catalog row | `resolveModel` name equals the raw id and the reasoning block is absent; the real dsh LLM service accepts the result |
+| O74 | Tool-result batch followed by one user reminder | One native turn and one dsh stream; the reminder is queued before the result release; same native session; the next request continues it |
+| O75 | Two trailing user messages after a tool-result batch | Both messages keep their order and reach the same native turn; nothing moves into the tool result |
+| O76 | Developer or system message after the tool-result batch | `UNSUPPORTED_INPUT` before any native send; the parked result is not released |
+| O77 | Image in a trailing mid-turn user message | `UNSUPPORTED_INPUT` before dispatch; no result release and no byte read |
+| O78 | Trailing user content with a configuration change or a restored generation | The recorded rollover imports the completed outcome and sends the trailing content as pending input; one dsh stream |
 
 Use independent expected response data for thinking tests. A comparison that
 derives both expected and actual data from the altered request cannot detect a
@@ -212,6 +218,21 @@ compact or return a clear refusal. The summary native session must receive the
 flat text import and no signed history. Record the exact dsh, SDK, CLI, and model
 versions. Keep raw captures in `.local/evidence/`. Do not claim a token meter,
 an automatic compaction, or a live model switch until this test passes.
+
+## Live trailing-context probe
+
+On 2026-11-11 an official SDK probe measured where the CLI puts a user message
+that arrives while an MCP tool handler is parked. It used SDK 0.3.322, Claude
+Code 2.1.319, and the subscription login. The probe queued the message before
+the result release and got one native turn: the CLI put the text in a
+CLI-generated system-role mid-turn message after the `tool_result`, and the
+model answered once. When the probe released the result first, the CLI made a
+second native turn. See
+[the probe summary](evidence/trailing-context-probe-2026-11-11.json). The probe
+did not run the plugin in dsh, did not measure an image, and did not measure
+signed-thinking retention. It also could not read the CLI session transcript
+because this session denied the transcript write; it used the official
+`OTEL_LOG_RAW_API_BODIES` file diagnostic instead.
 
 ## Live retention test
 
@@ -288,9 +309,11 @@ proof, and live content/retention tests on the advertised runtime pair. Report
 the live negative-test status explicitly. If it is unavailable, do not advertise
 full live tamper certification. Do not spend money to test a no-spend assertion.
 
-Offline rows O43 to O56 cover generation recovery and configuration changes. No
-live measurement has run for either path. The import is ordinary user content,
-and it is not proof of signed-thinking retention. Keep native resume, binary protocol changes, image
+Offline rows O43 to O66 cover generation recovery, configuration changes, and
+trailing mid-turn content. The trailing-content order comes from a direct SDK
+probe; the plugin-in-dsh path has no live measurement. The imports and the
+mid-turn messages are ordinary user content, and they are not proof of
+signed-thinking retention. Keep native resume, binary protocol changes, image
 offload on long sessions, document input, and additional content types outside
 the compatibility claim until their own measurements pass. The 2026-11-11 image probe measured one image
 in a user message and one image in a tool result. It did not measure many images,

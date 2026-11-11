@@ -93,8 +93,14 @@ export type Admission =
     readonly boundMessageId: string
   }
   | {
+    /**
+     * The leading tool-result batch plus any user messages that dsh put after
+     * it in the same request. The adapter releases the batch and delivers the
+     * trailing messages inside the same native turn.
+     */
     readonly kind: 'tool-results'
     readonly results: readonly ToolResultInput[]
+    readonly trailing: readonly (readonly OutgoingBlock[])[]
     readonly requestHash: string
     readonly committed: readonly CanonicalMessage[]
     readonly boundMessageId: string
@@ -185,10 +191,11 @@ export function admitTranscript(input: {
   const published = freezeMessage({ ...split.assistant, id: boundMessageId })
   if (input.waitingForResults) {
     const rawSuffix = input.messages.slice(input.state.committed.length + 1)
-    const results = toolSuffix(rawSuffix)
+    const splitSuffix = toolSuffix(rawSuffix)
     return {
       kind: 'tool-results',
-      results,
+      results: splitSuffix.results,
+      trailing: splitSuffix.trailing,
       requestHash,
       committed: freezeMessages([...split.prefix, published, ...split.rest]),
       boundMessageId,
@@ -402,14 +409,24 @@ function matchPublication(message: CanonicalMessage, pending: PendingPublication
   return message.id
 }
 
-function toolSuffix(messages: readonly LooseMessage[]): ToolResultInput[] {
+/**
+ * Split a waiting-for-results suffix into the leading tool-result batch and
+ * the user messages that dsh placed after it in the same request.
+ * A developer or system message at this boundary is still refused.
+ */
+function toolSuffix(messages: readonly LooseMessage[]): {
+  readonly results: ToolResultInput[]
+  readonly trailing: readonly (readonly OutgoingBlock[])[]
+} {
   if (messages.length === 0) {
     throw pluginFailure('TOOL_RESULT_MISMATCH', 'The tool-result suffix is empty.')
   }
-  if (messages.some((message) => message.role !== 'tool')) {
-    throw pluginFailure('UNSUPPORTED_INPUT', 'A user message cannot enter a tool-result suffix.')
+  let resultCount = 0
+  while (resultCount < messages.length && messages[resultCount]?.role === 'tool') resultCount += 1
+  if (resultCount === 0) {
+    throw pluginFailure('TOOL_RESULT_MISMATCH', 'The tool-result suffix has no tool result.')
   }
-  return messages.map((message) => {
+  const results = messages.slice(0, resultCount).map((message) => {
     const toolCallId = message.toolCallId
     if (typeof toolCallId !== 'string' || toolCallId.trim() === '') {
       throw pluginFailure('TOOL_RESULT_MISMATCH', 'A tool result has no call id.')
@@ -420,6 +437,21 @@ function toolSuffix(messages: readonly LooseMessage[]): ToolResultInput[] {
       isError: message.isError === true,
     }
   })
+  const trailing: OutgoingBlock[][] = []
+  for (const message of messages.slice(resultCount)) {
+    if (message.role !== 'user') {
+      throw pluginFailure(
+        'UNSUPPORTED_INPUT',
+        'Only user input can follow the tool-result batch.',
+      )
+    }
+    const content = outgoingBlocks(message.content)
+    if (content.length === 0) {
+      throw pluginFailure('UNSUPPORTED_INPUT', 'A trailing user message is empty.')
+    }
+    trailing.push(content)
+  }
+  return { results, trailing }
 }
 
 function sameMessages(left: readonly CanonicalMessage[], right: readonly CanonicalMessage[]): boolean {

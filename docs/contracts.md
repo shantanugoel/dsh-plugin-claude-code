@@ -147,6 +147,13 @@ Use one SDK event consumer for the process lifetime. Per-stream output queues
 subscribe to that consumer. Ending a dsh stream at a tool call must not call
 `return()` on, dispose, or close the native SDK query.
 
+`sendMidTurnUser` sends user content that the native runtime must surface inside
+the running turn. The adapter calls it only while a tool handler is parked, and
+it calls it before it releases the tool results. The measured CLI behavior in
+D31 puts this content in the same API request as the `tool_result`, as a
+CLI-generated system-role mid-turn message. If the result is released first, the
+CLI starts a second native turn, so this order is part of the contract.
+
 `NativeUserInput` carries an ordered content list, not only a string. A text
 block maps to a Messages text block. An image block maps to a base64 image block
 with the media type of the request version. When the list holds text only, send
@@ -274,9 +281,10 @@ Validate in this order before releasing a result:
 1. Session key, generation, workspace, and controls agree.
 2. Every committed earlier message, including its ID, agrees.
 3. The pending publication has the exact content and valid replay data.
-4. The suffix contains exactly one result for each pending call, in dsh's stored
-   order, with no unknown, duplicated, or missing call ID.
-5. No queued user/developer/context update has entered the tool-result suffix.
+4. The suffix starts with exactly one result for each pending call, in dsh's
+   stored order, with no unknown, duplicated, or missing call ID.
+5. The suffix can then hold user messages only. A developer or system message at
+   that boundary is invalid. Each trailing user message is non-empty.
 
 Record the request before `stream()` in dsh when a transformation changes the
 model-visible input. `stream()` cannot replace frozen messages. Ordinary role
@@ -377,6 +385,15 @@ Handlers may arrive one at a time, after the full batch was published. Deliver
 each staged result once when its exact handler arrives. Keep duplicate delivery
 and unknown IDs as errors. Returning an error result is permitted only when
 dsh has recorded that outcome.
+
+When the frozen request holds user messages after the result batch, deliver them
+inside the same native turn. Send each message with `sendMidTurnUser` and then
+release the staged batch. The CLI handles one native session. The committed dsh
+transcript keeps the complete request, so the next request compares equal. A
+non-offloaded image in a trailing message returns `UNSUPPORTED_INPUT` before
+dispatch until a measurement covers it. An offloaded image becomes its
+placeholder text. Never move the trailing content into a tool result and never
+drop it.
 
 Content mapping for this route:
 

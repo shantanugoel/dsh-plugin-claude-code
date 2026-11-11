@@ -23,6 +23,7 @@ export class ScriptedNativeSession implements NativeSession {
     sdkVersion: 'scripted',
   }
   readonly inputs: NativeUserInput[] = []
+  readonly midTurnInputs: NativeUserInput[] = []
   private readonly queue: NativeEvent[] = []
   private readonly waiters: Array<() => void> = []
   private closed = false
@@ -55,6 +56,15 @@ export class ScriptedNativeSession implements NativeSession {
     this.inputs.push(copy)
     this.runtime.inputs.push(copy)
     this.play(this.runtime.takeTurn())
+  }
+
+  async sendMidTurnUser(input: NativeUserInput): Promise<void> {
+    if (this.closed) {
+      throw new Error('The scripted session is closed.')
+    }
+    const copy: NativeUserInput = { content: input.content.map((block) => ({ ...block })) }
+    this.midTurnInputs.push(copy)
+    this.runtime.midTurnInputs.push(copy)
   }
 
   async continueAfterResults(): Promise<void> {
@@ -106,6 +116,7 @@ export class ScriptedNativeSession implements NativeSession {
 export class ScriptedNativeRuntime implements NativeRuntime {
   readonly starts: NativeSessionConfig[] = []
   readonly inputs: NativeUserInput[] = []
+  readonly midTurnInputs: NativeUserInput[] = []
   readonly sessions: ScriptedNativeSession[] = []
   private readonly turns: ScriptedTurn[] = []
   closeCount = 0

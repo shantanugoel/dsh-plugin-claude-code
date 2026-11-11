@@ -53,6 +53,23 @@ and an installed copy with that changed requirement was skipped at startup. The
 rejection cases changed the package requirement, not the runtime version. The
 record contains no account data and no raw capture.
 
+## Trailing-context probe
+
+[trailing-context-probe-2026-11-11.json](trailing-context-probe-2026-11-11.json)
+summarizes a direct Agent SDK probe on 2026-11-11 for issue #4. It used SDK
+0.3.322 and Claude Code 2.1.319 with the subscription login. One in-process MCP
+tool handler parked. The probe pushed a trailing user message, then released the
+tool result. The model answered once and included both the tool token and the
+trailing word. The raw API request has the trailing text in a CLI-generated
+system-role mid-turn message after the `tool_result` block. In the opposite
+order, the CLI ended the tool turn first and started a second native turn.
+
+This session's file sandbox denied the CLI transcript write under
+`~/.claude/projects` with EPERM. The probe captured the request through the
+official `OTEL_LOG_RAW_API_BODIES` file diagnostic instead. The probe did not
+run the plugin inside dsh, and it did not measure an image, several trailing
+messages, signed-thinking retention, or another version pair.
+
 ## Limits
 
 - This was a direct `claude -p` probe, not the planned SDK plugin.

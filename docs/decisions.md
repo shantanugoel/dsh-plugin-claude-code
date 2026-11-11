@@ -567,3 +567,39 @@ Evidence: the installed SDK 0.3.322 declaration file `sdk.d.ts`, read on
 2026-11-11. Offline rows O72 and O73. The tests use synthetic catalog rows and
 the real dsh 0.2.2-rc.1 LLM service. No live `supportedModels()` read was made
 for this change.
+
+## D31. Deliver trailing user content inside the waiting tool turn
+
+Decision: when a dsh request has a tool-result batch followed by user messages,
+split the suffix. Validate and stage the result batch. Send each trailing user
+message on the native streaming input queue, then release the result batch.
+Continue the same dsh stream and the same native session. The committed dsh
+transcript keeps the complete frozen request. Refuse a developer message or a
+system message at that boundary. Refuse a non-offloaded image in a trailing
+mid-turn message until a measurement covers it.
+
+Reason: the live measurement on 2026-11-11 used official Agent SDK 0.3.322,
+Claude Code 2.1.319, and the first-party subscription login. One in-process MCP
+tool handler parked. The probe then pushed one trailing user message:
+
+- Trailing input before the result release: one native turn, one model request
+  after the tool result. The CLI put the trailing text in a CLI-generated
+  system-role mid-turn message after the `tool_result` block, not inside it. The
+  model received the tool token and the trailing word and answered once.
+- Trailing input after the result release: two native turns and two requests.
+  The first answer had only the tool token. The trailing text became a new user
+  turn with its own request and answer. One dsh stream cannot represent that
+  second turn.
+
+Thus the delivery order is load-bearing. Do not release the results first.
+
+The CLI session request records were not available: this agent session has a
+workspace-write file sandbox, and the CLI transcript write under
+`~/.claude/projects` failed with EPERM. The probe captured the same request data
+through the official `OTEL_LOG_RAW_API_BODIES` file diagnostic. The reviewed
+summary is [trailing-context-probe-2026-11-11.json](evidence/trailing-context-probe-2026-11-11.json).
+Raw captures stay private in `.local/evidence/`.
+
+This does not prove plugin-in-dsh behavior, image support in a mid-turn message,
+or several trailing message boundaries. It also does not prove signed-thinking
+retention across a mid-turn message. Evidence: offline rows O74 to O78.

@@ -274,6 +274,7 @@ test('plugin unload reaps a stalled native close', async () => {
         identity: { cliSessionId: 'stalled', cliVersion: 'scripted', sdkVersion: 'scripted' },
         events: (async function* () { yield* events })(),
         sendUser: () => Promise.resolve(),
+        sendMidTurnUser: () => Promise.resolve(),
         continueAfterResults: () => Promise.resolve(),
         close: () => new Promise<void>(() => undefined),
       })

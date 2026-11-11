@@ -175,7 +175,7 @@ test('a bad tool-result suffix releases nothing', async () => {
   assert.equal(delivered, false)
 })
 
-test('a user message cannot enter a tool-result suffix', async () => {
+test('a user message without the tool results is refused', async () => {
   const accepted = interpretAuthStatus({ stdout: SYNTHETIC_AUTH_STATUS, exitCode: 0 })
   const runtime = new ScriptedNativeRuntime()
   runtime.enqueue({
@@ -198,9 +198,10 @@ test('a user message cannot enter a tool-result suffix', async () => {
   ] as GenerateOptions['messages']
   await assert.rejects(collect(model, request), (error: unknown) => {
     assert.ok(error instanceof LlmError)
-    assert.equal(error.code, 'UNSUPPORTED_INPUT')
+    assert.equal(error.code, 'TOOL_RESULT_MISMATCH')
     return true
   })
+  assert.equal(runtime.midTurnInputs.length, 0)
 })
 
 test('tool schemas stay lossless and collisions are refused', () => {

@@ -165,6 +165,7 @@ export async function startOfficialSession(config: NativeSessionConfig): Promise
     identity,
     events: queue,
     sendUser: (user) => input.push(user),
+    sendMidTurnUser: (user) => input.push(user),
     continueAfterResults: () => Promise.resolve(),
     isClosed: () => queue.closed,
     async close() {
