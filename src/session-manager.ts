@@ -6,6 +6,7 @@ import type { NativeEvent, NativeSession } from './sdk-runtime.js'
 import type { GenerationChangeReason } from './replay.js'
 import type { PendingToolCall } from './stream.js'
 import type { CanonicalMessage, PendingPublication } from './transcript.js'
+import { removeDiagnosticsDir } from './request-log.js'
 
 /** Live session phases. A generation that enters INVALID does not return to READY. */
 export type SessionPhase =
@@ -29,6 +30,8 @@ export interface LiveGeneration {
   readonly model: string
   readonly effort: ClaudeEffort | undefined
   readonly maxOutputTokens: number | undefined
+  /** Private raw request-body directory of this generation, when capture is enabled. */
+  readonly diagnosticsDir: string | undefined
   readonly workspace: string
   readonly systemPrompt: string
   readonly toolsCanonical: string
@@ -131,12 +134,16 @@ export class SessionManager {
     this.live.delete(key)
     session.phase = 'CLOSED'
     session.bridge.cancel('The native session closed before the tool result was delivered.')
-    await withDeadline(
-      session.native.close(),
-      session.deadlines.closeMs,
-      'NATIVE_OUTCOME_UNKNOWN',
-      'The native session did not close before the deadline.',
-    )
+    try {
+      await withDeadline(
+        session.native.close(),
+        session.deadlines.closeMs,
+        'NATIVE_OUTCOME_UNKNOWN',
+        'The native session did not close before the deadline.',
+      )
+    } finally {
+      removeDiagnosticsDir(session.diagnosticsDir)
+    }
   }
 
   async closeOwned(): Promise<void> {
@@ -145,12 +152,16 @@ export class SessionManager {
     await Promise.all(sessions.map(async (session) => {
       session.phase = 'CLOSED'
       session.bridge.cancel('The native session closed before the tool result was delivered.')
-      await withDeadline(
-        session.native.close(),
-        session.deadlines.closeMs,
-        'NATIVE_OUTCOME_UNKNOWN',
-        'The native session did not close before the deadline.',
-      )
+      try {
+        await withDeadline(
+          session.native.close(),
+          session.deadlines.closeMs,
+          'NATIVE_OUTCOME_UNKNOWN',
+          'The native session did not close before the deadline.',
+        )
+      } finally {
+        removeDiagnosticsDir(session.diagnosticsDir)
+      }
     }))
   }
 }

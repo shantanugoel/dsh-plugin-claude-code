@@ -55,6 +55,19 @@ listed the route. The documented GitHub spec install then passed on 2026-11-11
 in a fresh isolated DSH_HOME profile. The record contains no account data and no
 raw capture.
 
+## Request evidence probe
+
+[request-evidence-probe-2026-11-11.json](request-evidence-probe-2026-11-11.json)
+records the issue #7 live probe on 2026-11-11. It used the official Agent SDK
+0.3.322 and Claude Code 2.1.319 with the subscription login. The probe used the
+production launch plan and the production native session. Both turns stored a
+complete request record from the official raw-body diagnostic. The second
+request was reconstructed from a thread delta. The recorded tool list held the
+dsh MCP tool and one inert documented placeholder. The probe produced no signed
+thinking block, so live signature retention is not measured. A live turn in an
+installed dsh profile is not measured. The record contains no account data and no
+raw capture.
+
 ## Engine check
 
 [engine-check-2026-11-11.json](engine-check-2026-11-11.json) records the issue #12

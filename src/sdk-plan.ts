@@ -17,6 +17,10 @@ export const SESSION_CONTROL_ENV = {
   CLAUDE_CODE_DISABLE_BUNDLED_SKILLS: '1',
   CLAUDE_CODE_DISABLE_AGENT_VIEW: '1',
   CLAUDE_CODE_DISABLE_WORKFLOWS: '1',
+  // Measured on CLI 2.1.319: an incremental request body sends only the delta
+  // and a thread reference, so a later request has no complete message prefix.
+  // The plugin needs each request body complete for its retention audit.
+  CLAUDE_CODE_INCREMENTAL_REQUEST_BODY: '0',
 } as const
 
 export const DSH_MCP_SERVER = 'dsh'
@@ -60,6 +64,10 @@ export interface SdkLaunchPlan {
   readonly permissionMode: 'dontAsk'
   readonly effort?: ClaudeEffort
   readonly maxOutputTokens?: number
+  /** Private directory of the CLI raw request-body diagnostic for this generation. */
+  readonly diagnosticsDir?: string
+  /** The dsh MCP tools are never deferred behind tool search. */
+  readonly mcpAlwaysLoad: true
   readonly enableFileCheckpointing: false
   readonly resumeOmitted: true
   readonly continueConversation: false
@@ -90,6 +98,8 @@ export interface SdkLaunchInput {
   readonly resultWaitMs: number
   readonly effort?: ClaudeEffort
   readonly maxOutputTokens?: number
+  /** When set, the native child writes its raw `/v1/messages` bodies to this private directory. */
+  readonly diagnosticsDir?: string
 }
 
 /** Build the native session plan. Billing variables from the parent are absent. */
@@ -111,6 +121,11 @@ export function buildSdkLaunchPlan(input: SdkLaunchInput): SdkLaunchPlan {
   for (const [name, value] of Object.entries(SESSION_CONTROL_ENV)) env[name] = value
   if (input.maxOutputTokens !== undefined) {
     env['CLAUDE_CODE_MAX_OUTPUT_TOKENS'] = String(input.maxOutputTokens)
+  }
+  if (input.diagnosticsDir !== undefined) {
+    // Official Claude Code diagnostic. One full `/v1/messages` request body and one
+    // response body for each call. The directory is private and owned by the plugin.
+    env['OTEL_LOG_RAW_API_BODIES'] = `file:${input.diagnosticsDir}`
   }
   assertIsolatedEnv(env)
   const mcpTools = input.tools.map((tool) => ({
@@ -143,6 +158,8 @@ export function buildSdkLaunchPlan(input: SdkLaunchInput): SdkLaunchPlan {
     permissionMode: 'dontAsk',
     ...(input.effort === undefined ? {} : { effort: input.effort }),
     ...(input.maxOutputTokens === undefined ? {} : { maxOutputTokens: input.maxOutputTokens }),
+    ...(input.diagnosticsDir === undefined ? {} : { diagnosticsDir: input.diagnosticsDir }),
+    mcpAlwaysLoad: true,
     enableFileCheckpointing: false,
     resumeOmitted: true,
     continueConversation: false,

@@ -1,0 +1,51 @@
+{
+  "measurement_date": "2026-11-11",
+  "issue": 7,
+  "decision": "D33",
+  "transport": "official Agent SDK 0.3.322 streaming session; Claude Code CLI 2.1.319",
+  "capture_source": {
+    "diagnostic": "OTEL_LOG_RAW_API_BODIES=file:<private directory>",
+    "private_directory": true,
+    "directory_mode": "0700",
+    "removed_on_close": true,
+    "session_transcript_used": false,
+    "session_transcript_blocker": "The dsh profile sandbox denies the CLI transcript write under the user home. A live tool turn in an isolated headless profile produced no transcript file, so the plugin cannot read that path in production.",
+    "thread_delta": "CLI beta message-threads-2026-08-12 sends the first request complete and each later request as a delta with a thread reference. The plugin reconstructs the complete message list from the last complete request, the last response message, and the delta."
+  },
+  "probe": {
+    "script": "scripts/probe-request-evidence.mjs",
+    "model_requested": "haiku",
+    "served_model": "claude-haiku-5-5",
+    "runs": 2,
+    "inference_turns_per_run": 2,
+    "turns": "one parked MCP tool call released after the tool-call dsh stop, then the final answer",
+    "raw_capture_location": ".local/evidence/request-evidence-probe-raw/ (private, not committed)"
+  },
+  "results": {
+    "evidence_events_per_run": 2,
+    "audit_status": "complete, redacted false, truncated false, source claude-otel-raw-api-body, on both turns of both runs",
+    "system_blocks": "three recorded blocks: the CLI billing header, the CLI agent prompt, and the replaced dsh prompt byte for byte",
+    "recorded_tools": [
+      "DeferredToolPlaceholder",
+      "mcp__dsh__dsh__probe_token"
+    ],
+    "advisor_tool_present": false,
+    "inert_placeholder": "The documented inert DeferredToolPlaceholder remains in the recorded tool list. No supported launch control removed it. Its complete definition is recorded and kept in the evidence body, which design section 5 permits for a fixed inert placeholder. Any other extra tool fails the audit.",
+    "second_request": "reconstructed from a thread delta to five messages; the audit was accepted",
+    "thinking_signature_observed": false
+  },
+  "offline": "rows O89 to O95; 188 tests pass",
+  "no_model_request_directly": true,
+  "raw_capture_committed": false,
+  "proven": [
+    "The official raw-body diagnostic writes complete /v1/messages request and response bodies to a private directory chosen by the plugin.",
+    "The production capture stores a complete request record and marks the audit accepted when the system prompt, the dsh tool list, the served model, and the earlier prefix agree.",
+    "A thread-delta second request is reconstructed into the complete native message list, and the audit is accepted.",
+    "The recorded tool list holds the dsh MCP tool and one documented inert placeholder; the advisor tool is absent."
+  ],
+  "not_proven": [
+    "Live signed-thinking retention: the two probe runs produced no signed thinking block, so the second request had no signature to compare.",
+    "A live turn through an installed dsh profile: this probe used the official SDK with the production launch plan and native session, not the plugin inside dsh. Issue #13 covers that measurement.",
+    "The thread-delta shape on other CLI or SDK versions; the reconstruction requires the measured shape."
+  ]
+}

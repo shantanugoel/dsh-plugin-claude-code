@@ -3,7 +3,7 @@
 Use three test layers. Keep the result of each layer separate.
 
 Offline status on 2026-11-11: the Node suite covers rows O01 through O88 with
-synthetic data and the scripted runtime, and 175 tests pass. The dsh 0.2.2-rc.1
+synthetic data and the scripted runtime, and 188 tests pass. The dsh 0.2.2-rc.1
 LLM service, session store, and compaction balance functions are loaded in that
 suite. The real dsh LLM runtime is mounted for file and image projection tests
 and for the native error finish test. The agent loop is not driven. No offline
@@ -159,6 +159,21 @@ result delivery, opened session, close request, and remaining child handle.
 | O86 | A tool-result continuation whose 40 result images would pass the generation limit | One new generation with reason `image-budget`; the import holds the completed outcome and image placeholders; the new native input holds no image block; the old tool wait is cancelled |
 | O87 | A generation at 40 retained images plus a 40-image user turn | One native generation; no generation change; the second native input holds 40 image blocks |
 | O88 | A summary auxiliary call whose history holds more than 80 images | The flat-text summary import sends no image bytes, reads no attachment version, and is not subject to the request budget |
+| O89 | One complete raw-body SDK request record with a matching launched prompt, tool list, and served model | One `request-evidence` event; the finish stores `retentionAudit: accepted` and a request body with model, system, tools, and messages |
+| O90 | A thread-delta second request after a complete first request | The complete message list is reconstructed from the last complete request, the last response, and the delta; the audit is accepted and the earlier signed blocks match |
+| O91 | A missing, partial, oversize, redacted, truncated, or non-streaming request record | No `request-evidence` event; audit `unavailable`; the turn still finishes; no signed content is shortened |
+| O92 | An extra executable native tool in the recorded request | No `request-evidence` event; audit `unavailable` |
+| O93 | One documented inert placeholder with its complete definition, then an unknown or changed placeholder definition | The documented placeholder is accepted and kept in the record; the unknown definition reports `unavailable` |
+| O94 | A changed system prompt block, a changed served model, a moved user text, a changed earlier signature, or a missing tool result | No `request-evidence` event; audit `unavailable` |
+| O95 | Generation close or a native start failure with the raw-body diagnostic enabled | The private directory is removed; no raw request body reaches git or the package |
+
+O89 to O95 passed offline on 2026-11-11. The live probe summary is
+[request-evidence-probe-2026-11-11.json](evidence/request-evidence-probe-2026-11-11.json).
+It measured two turns through the official SDK with audit accepted, the dsh MCP
+tool plus one inert placeholder in the recorded list, and a reconstructed
+thread-delta second request. It did not produce a signed thinking block, so live
+signature retention is not measured. A live turn in an installed dsh profile is
+not measured; issue #13 covers it.
 
 Use independent expected response data for thinking tests. A comparison that
 derives both expected and actual data from the altered request cannot detect a

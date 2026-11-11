@@ -118,6 +118,20 @@ The content block has no signature field, but the source can hold opaque JSON.
 The source can store signatures without changing the content-block type.
 The SDK implementation and dsh persistence cycle have not yet passed these tests.
 
+The plugin does not read the CLI session transcript. A dsh profile denies the
+CLI write of its transcript under the user home, so this path is not available
+in production. The plugin instead sets the official raw-body diagnostic
+`OTEL_LOG_RAW_API_BODIES=file:<private directory>` for each native generation.
+The CLI writes one complete `/v1/messages` request body and one response body
+for each call. The plugin reads the newest SDK request after each response,
+reconstructs the thread delta when the CLI uses `message-threads-2026-08-12`,
+and compares the complete request with the launch plan and the observed native
+blocks. It stores the existing `nativeRequestRecord` and sets `retentionAudit`
+to `accepted` only when that comparison passes. A missing, partial, oversize,
+redacted, or changed record leaves the audit `unavailable`; it is not a turn
+failure. The diagnostic directory is private, holds only the current
+generation, and is removed on close. See decision D33.
+
 **2. Session and transcript ownership**
 
 dsh owns its durable session, edits, model selection, tools, sandbox, and approvals.

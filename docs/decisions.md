@@ -644,3 +644,52 @@ is for a 200000-token-context model, and the other-model limit is about 600.
 The probe used two inference requests. See
 [the many-image probe summary](evidence/many-image-probe-2026-11-11.json). No
 live dsh profile ran this budget or this generation change.
+
+## D33. Capture request evidence from the CLI raw-body diagnostic
+
+Decision: set the official Claude Code diagnostic `OTEL_LOG_RAW_API_BODIES` to
+`file:<private directory>` in the native child environment. Use one private
+directory for each conversation generation (mode 0700, removed on close or
+start failure). After each native response, read the newest `query_source:
+"sdk"` request and response bodies, reconstruct a thread-delta request, and
+compare the complete request with the launch plan and the observed native
+prefix. Emit the existing `request-evidence` event only when every check
+passes. Otherwise emit nothing, so the dsh turn stores `retentionAudit:
+"unavailable"`. A missing audit is not a turn failure.
+
+The comparison checks:
+
+- The record parses whole, has `stream: true`, a model id, system, tools, and a
+  non-empty message list, and is at most 1 MiB. The evidence record is at most
+  1 MiB. No signed content is truncated.
+- The recorded system prompt holds the replaced dsh prompt byte for byte as one
+  block. Only the CLI billing header block and the CLI agent prompt block are
+  accepted as additions. Any other system block fails the audit.
+- The recorded tool list contains exactly the dsh MCP tools in launch order.
+  The CLI may add one documented inert `DeferredToolPlaceholder`; its complete
+  definition must match, and the evidence record keeps it. Any other tool
+  fails the audit.
+- The recorded model equals the native served model from the response body.
+- Every earlier assistant response reappears byte for byte, including thinking
+  signatures, text, and tool-call ids. Every user text reappears in order. Every
+  earlier tool call has its recorded result. CLI context blocks and CLI
+  environment messages are not user content and are ignored.
+
+Reason: the dsh profile sandbox denies the CLI write of its session transcript
+under the user home. A live tool turn in an isolated headless profile produced
+no transcript file, so the earlier session-log plan cannot work in production.
+The raw-body diagnostic is an official CLI interface that writes complete
+request and response bodies to a directory that the plugin chooses and controls.
+On CLI 2.1.319 it also records the beta `message-threads-2026-08-12` delta: the
+first request is complete and each later request holds only the delta plus a
+thread reference. The plugin keeps the last complete request and the last
+response, so it reconstructs the exact native message list and compares it.
+
+Evidence: offline rows O89 to O95 and
+[request-evidence-probe-2026-11-11.json](evidence/request-evidence-probe-2026-11-11.json).
+Two live SDK probe turns with SDK 0.3.322 and CLI 2.1.319 stored complete
+evidence. The second request was reconstructed from a thread delta to five
+messages. The tool list held the dsh MCP tool and the one inert placeholder;
+the advisor tool was absent. The probe did not produce a signed thinking block,
+so the live signature-retention comparison is not measured. A live turn through
+an installed dsh profile is not measured; issue #13 covers it.

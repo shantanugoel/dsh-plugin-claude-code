@@ -189,6 +189,13 @@ message.
 - Your Claude plan limits apply. Extra usage charges are possible. The plugin
   does not block them.
 
+- The retention audit reads the official CLI raw-body diagnostic from a private
+  directory. It reports `accepted` only when the recorded request matches the
+  launched prompt, the dsh tool list, the served model, and the earlier signed
+  prefix. The CLI may add one inert `DeferredToolPlaceholder`; the audit keeps
+  its complete definition. If a record is missing or differs, the audit reports
+  `unavailable` and the turn still completes.
+
 ## Troubleshooting
 
 If the model list is empty, run `claude auth status`. The output must show

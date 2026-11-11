@@ -88,6 +88,16 @@ suite has 175 tests with this change. A direct official-SDK probe sent 100 and
 101 synthetic images; both turns succeeded, so the provider image limit was not
 reached. No live dsh profile ran the request budget or the generation change.
 
+Status, 2026-11-11 (issue #7): the plugin captures native request evidence from
+the official CLI raw-body diagnostic (`OTEL_LOG_RAW_API_BODIES`) in a private
+per-generation directory. It reconstructs a thread-delta request and stores the
+existing request record only when the system prompt, dsh tool list, served
+model, and earlier signed prefix agree (D33). Offline rows O89 to O95 bring the
+suite to 188 tests. A live two-turn SDK probe stored complete evidence on both
+turns. The probe produced no signed thinking block, so live signature retention
+is not measured, and a live turn in an installed dsh profile is not measured.
+
+
 ## Fixed requirements
 
 - Minimum target: dsh 0.2.2-rc.1, the only published release. Keep the exact
@@ -308,6 +318,11 @@ small test. If the user changes that requirement, record the new scope first.
 
 - [ ] Verify the official binary and selected SDK versions, effective workspace,
   truthful system prompt, complete native tools, and permitted auth route.
+- [x] Capture the complete native request through the official raw-body
+  diagnostic and compare it before an accepted audit. Measured on 2026-11-11
+  through the official SDK: two turns, audit accepted, dsh tools plus one inert
+  documented placeholder, thread-delta reconstruction. A live dsh-profile turn is
+  not measured. Offline rows O89 to O95.
 - [ ] Exercise a real dsh tool step through the SDK and inspect the next native
   request for exact thinking, signature, prompt, tools, and prefix retention.
 - [ ] Repeat with empty thinking text, multiple calls, delayed approval, denial,

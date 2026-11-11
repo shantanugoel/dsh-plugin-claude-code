@@ -386,6 +386,41 @@ Do not put opaque native data into visible text. Treat redacted thinking as an
 opaque native block. Zero-length thinking plus a signature is present thinking.
 The display projection can be empty; the original native data must remain.
 
+The request record comes from the official CLI raw-body diagnostic. The plugin
+sets `OTEL_LOG_RAW_API_BODIES=file:<private directory>` in the native child
+environment. One private directory is used for each conversation generation. The
+directory is mode 0700 and is removed on close or start failure. After a native
+response, read the newest `query_source: "sdk"` request body and its response
+body. The first request of a generation is complete. A later request can be a
+`message-threads-2026-08-12` delta; reconstruct its complete message list from
+the last complete request, the last response message, and the delta. Reject a
+delta with an unknown previous message id.
+
+The evidence record is:
+
+```ts
+interface RequestEvidenceV1 {
+  status: 'complete';
+  redacted: false;
+  truncated: false;
+  source: 'claude-otel-raw-api-body';
+  body: { model: string; system: unknown[]; tools: unknown[]; messages: unknown[] };
+}
+```
+
+The record must parse whole, have `stream: true`, a non-empty message list, and
+fit 1 MiB. Never truncate signed content. The system comparison requires the
+replaced dsh prompt byte for byte and accepts only the CLI billing-header block
+and the CLI agent-prompt block as additions. The tool comparison requires the
+dsh MCP tools in launch order. One documented inert `DeferredToolPlaceholder`
+is accepted only with its complete recorded definition; the evidence body keeps
+it. Every other extra tool fails. The model must equal the native served model
+of the response. The earlier assistant prefix must reappear byte for byte,
+including signatures, and every earlier tool call must have its result. Emit the
+`request-evidence` event only when all checks pass. A failed check leaves
+`retentionAudit` `unavailable`; it is not a turn failure. Raw body files stay in
+the private directory or in `.local/evidence/`, never in git or the package.
+
 A summary auxiliary finish always stores `retentionAudit: 'unavailable'` and a
 null `nativeRequestRecord`, even when its own turn carries complete request
 evidence. The flattened textual import is not a signed native prefix. Store the

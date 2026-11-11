@@ -3,6 +3,7 @@ import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import { pluginFailure } from './errors.js'
+import { RequestEvidenceCapture, expectedNativeTools, removeDiagnosticsDir } from './request-log.js'
 import {
   advanceAssistantTurn,
   eventsFromResult,
@@ -67,6 +68,8 @@ interface OfficialMessage {
   readonly stop_reason?: string | null
   readonly is_error?: boolean
   readonly api_error_status?: number | null
+  /** Native model id that the CLI reports at initialization. */
+  readonly model?: string
   /** Native error text of an is_error success result. */
   readonly result?: string
   /** Error list of an SDKResultError. */
@@ -103,6 +106,15 @@ export async function startOfficialSession(config: NativeSessionConfig): Promise
   if (launch === undefined) {
     throw pluginFailure('INCOMPATIBLE_RUNTIME', 'The native session has no launch plan.')
   }
+  const capture = launch.diagnosticsDir === undefined
+    ? undefined
+    : new RequestEvidenceCapture({
+      diagnosticsDir: launch.diagnosticsDir,
+      workspace: launch.cwd,
+      systemPrompt: launch.systemPrompt.prompt,
+      tools: expectedNativeTools(launch.mcpTools),
+      requestedModel: launch.model,
+    })
   const executable = findClaudeExecutable(launch.env['PATH'])
   const sdk = await import('@anthropic-ai/claude-agent-sdk')
   const tools = launch.mcpTools.map((tool) => sdk.tool(
@@ -115,6 +127,7 @@ export async function startOfficialSession(config: NativeSessionConfig): Promise
         throw pluginFailure('TOOL_RESULT_MISMATCH', 'The native tool call has no call id.')
       }
       const result = await config.callTool(callId)
+      capture?.recordToolResult(result)
       return {
         content: result.content.map((block) => block.type === 'text'
           ? { type: 'text' as const, text: block.text }
@@ -130,6 +143,9 @@ export async function startOfficialSession(config: NativeSessionConfig): Promise
   const server = sdk.createSdkMcpServer({
     name: DSH_MCP_SERVER,
     version: packageVersion(),
+    // Never defer the dsh tools behind tool search. A deferred tool set adds the
+    // CLI placeholder tool to the native request and hides the real tool list.
+    alwaysLoad: true,
     tools,
     timeout: launch.mcpTimeoutMs,
   })
@@ -164,15 +180,21 @@ export async function startOfficialSession(config: NativeSessionConfig): Promise
     sdkVersion: PINNED_SDK_VERSION,
   }
   const queue = new EventQueue()
-  const consumer = consume(query, queue, identity, launch.model)
+  const consumer = consume(query, queue, identity, launch.model, capture)
   consumer.catch((error: unknown) => {
     queue.fail(error)
   })
   return {
     identity,
     events: queue,
-    sendUser: (user) => input.push(user),
-    sendMidTurnUser: (user) => input.push(user),
+    sendUser: (user) => {
+      capture?.recordUserInput(user.content)
+      return input.push(user)
+    },
+    sendMidTurnUser: (user) => {
+      capture?.recordUserInput(user.content)
+      return input.push(user)
+    },
     continueAfterResults: () => Promise.resolve(),
     isClosed: () => queue.closed,
     async close() {
@@ -180,6 +202,7 @@ export async function startOfficialSession(config: NativeSessionConfig): Promise
       query.close()
       queue.close()
       await consumer.catch(() => undefined)
+      removeDiagnosticsDir(launch.diagnosticsDir)
     },
   }
 }
@@ -189,6 +212,7 @@ async function consume(
   queue: EventQueue,
   identity: { cliSessionId: string; cliVersion: string },
   requestedModel: string,
+  capture: RequestEvidenceCapture | undefined,
 ): Promise<void> {
   let turn: NativeTurnState = newNativeTurn()
   let latestAssistantError: unknown
@@ -196,6 +220,7 @@ async function consume(
     if (message.type === 'system' && message.subtype === 'init') {
       if (typeof message.session_id === 'string') identity.cliSessionId = message.session_id
       if (typeof message.claude_code_version === 'string') identity.cliVersion = message.claude_code_version
+      if (typeof message.model === 'string') capture?.noteServedModel(message.model)
       if (message.tools !== undefined) queue.push({ type: 'native-tool-list', names: message.tools })
       continue
     }
@@ -205,6 +230,13 @@ async function consume(
       if (turn.stopSent) turn = { ...turn, stopSent: false, usageSent: false, blockCount: 0 }
       if (typeof message.error === 'string' && message.error.trim() !== '') latestAssistantError = message.error
       const advanced = advanceAssistantTurn(turn, message.message)
+      if (advanced.events.some((event) => event.type === 'message-stop')) {
+        // The request record for this response is complete before the response
+        // stream ends. Publish the audit before the dsh stop event, so the dsh
+        // finish stores the accepted or unavailable audit for this exact turn.
+        await appendEvidence(queue, capture)
+        capture?.recordAssistantResponse(assistantNativeBlocks(advanced.events))
+      }
       for (const event of advanced.events) queue.push(event)
       turn = advanced.state
       continue
@@ -217,6 +249,7 @@ async function consume(
       })
       latestAssistantError = undefined
       const folded = foldTurnEvents(turn, resultEvents)
+      if (folded.events.some((event) => event.type === 'message-stop')) await appendEvidence(queue, capture)
       const failed = folded.events.some((event) => event.type === 'turn-error')
       for (const event of folded.events) queue.push(event)
       turn = folded.state
@@ -234,6 +267,49 @@ async function consume(
     }
   }
   queue.close()
+}
+
+
+/** Publish one request-evidence event when the capture passes its checks. */
+async function appendEvidence(queue: EventQueue, capture: RequestEvidenceCapture | undefined): Promise<void> {
+  if (capture === undefined) return
+  const record = await capture.capture()
+  if (record !== undefined) queue.push({ type: 'request-evidence', record })
+}
+
+/**
+ * Build the original native assistant blocks from one response's events. These
+ * are the independent expected values for the next request's retained prefix.
+ */
+function assistantNativeBlocks(events: readonly NativeEvent[]): unknown[] {
+  const blocks: unknown[] = []
+  for (const event of events) {
+    if (event.type === 'block-start' && event.blockType === 'reasoning') {
+      continue
+    }
+    if (event.type !== 'block-snapshot') continue
+    if (event.blockType === 'text') blocks.push({ type: 'text', text: event.text ?? '' })
+    else if (event.blockType === 'reasoning') blocks.push(event.signature === undefined
+      ? { type: 'thinking', thinking: event.text ?? '' }
+      : { type: 'thinking', thinking: event.text ?? '', signature: event.signature })
+    else if (event.blockType === 'redacted-thinking') blocks.push({ type: 'redacted_thinking', data: event.redactedData ?? '' })
+    else if (event.blockType === 'tool-call') blocks.push({
+      type: 'tool_use',
+      id: event.id ?? '',
+      name: event.name ?? '',
+      input: parseArguments(event.argumentsText),
+    })
+  }
+  return blocks
+}
+
+function parseArguments(value: string | undefined): unknown {
+  if (value === undefined || value.trim() === '') return {}
+  try {
+    return JSON.parse(value) as unknown
+  } catch {
+    return value
+  }
 }
 
 /**

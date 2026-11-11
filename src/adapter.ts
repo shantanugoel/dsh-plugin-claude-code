@@ -39,8 +39,9 @@ import type { DiscoveredModel } from './model-discovery.js'
 import { recordContextImport as appendContextImport } from './rebase.js'
 import { parseReplay, type GenerationChangeReason, type ReplayV1 } from './replay.js'
 import { CLAUDE_CODE_SESSION_ROUTE, INFERENCE_SCOPE } from './route.js'
+import { createDiagnosticsDir, removeDiagnosticsDir } from './request-log.js'
 import { buildSdkLaunchPlan } from './sdk-plan.js'
-import type { NativeContentBlock, NativeRuntime, NativeToolResult } from './sdk-runtime.js'
+import type { NativeContentBlock, NativeRuntime, NativeSession, NativeToolResult } from './sdk-runtime.js'
 import type { LiveGeneration, SessionManager } from './session-manager.js'
 import type { Session, SessionStore } from '@deepseek-ai/dsh-session'
 
@@ -679,6 +680,9 @@ export class ClaudeCodeAdapter extends LlmAdapter {
     const bridge = new McpBridge()
     const tools = mapToolNames(options.tools ?? [])
     const prompt = systemPromptOf(options)
+    // Only a conversation generation captures request evidence. An auxiliary
+    // title or summary call has its own request audit and no dsh turn.
+    const diagnosticsDir = auxiliary ? undefined : createDiagnosticsDir()
     const launch = buildSdkLaunchPlan({
       workspace,
       model: options.model,
@@ -689,14 +693,21 @@ export class ClaudeCodeAdapter extends LlmAdapter {
       resultWaitMs: this.dependencies.deadlines.resultWaitMs,
       ...(effort === undefined ? {} : { effort }),
       ...(options.maxTokens === undefined ? {} : { maxOutputTokens: options.maxTokens }),
+      ...(diagnosticsDir === undefined ? {} : { diagnosticsDir }),
     })
-    const native = await withDeadline(this.dependencies.runtime.start({
-      workspace,
-      model: options.model,
-      systemPrompt: prompt,
-      launch,
-      callTool: (callId) => bridge.wait(callId, this.dependencies.deadlines.resultWaitMs),
-    }), this.dependencies.deadlines.initializationMs, 'INCOMPATIBLE_RUNTIME', 'The native session did not initialize before the deadline.')
+    let native: NativeSession
+    try {
+      native = await withDeadline(this.dependencies.runtime.start({
+        workspace,
+        model: options.model,
+        systemPrompt: prompt,
+        launch,
+        callTool: (callId) => bridge.wait(callId, this.dependencies.deadlines.resultWaitMs),
+      }), this.dependencies.deadlines.initializationMs, 'INCOMPATIBLE_RUNTIME', 'The native session did not initialize before the deadline.')
+    } catch (error) {
+      removeDiagnosticsDir(diagnosticsDir)
+      throw error
+    }
     const created: LiveGeneration = {
       key,
       sessionId: String(options.sessionId),
@@ -709,6 +720,7 @@ export class ClaudeCodeAdapter extends LlmAdapter {
       model: options.model,
       effort,
       maxOutputTokens: options.maxTokens,
+      diagnosticsDir,
       workspace,
       systemPrompt: prompt,
       toolsCanonical: canonicalJson(tools.tools),
