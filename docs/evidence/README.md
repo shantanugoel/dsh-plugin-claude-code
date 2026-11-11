@@ -157,6 +157,16 @@ case and in a mixed case. A script took the place of the dsh agent loop, so the
 dsh result for an unknown tool name is not measured. The record contains no
 account data and no raw capture.
 
+## Subagent model selection
+
+[subagent-model-selection-2026-11-11.json](subagent-model-selection-2026-11-11.json)
+summarizes two live runs on 2026-11-11 for issue #16 in an isolated `DSH_HOME`
+headless profile. With the dsh model-selection setting off, a parent on
+`haiku` could not start a child on `sonnet`. With the setting on, the child
+started and answered, and the session logs show a different served model for
+the parent and the child. The record contains no account data and no raw
+capture.
+
 ## Limits
 
 - This was a direct `claude -p` probe, not the planned SDK plugin.

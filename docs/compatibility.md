@@ -265,6 +265,40 @@ profile was not used. See
 - Unverified: a many-image dsh session. The direct-SDK 100 and 101 image probe
   succeeded and did not reach the provider limit.
 
+## Subagent model selection
+
+Issue #16 reported that a session on this route could start a subagent only on
+the model of the session. dsh sets this limit. The plugin does not set it. See
+[subagent-model-selection-2026-11-11.json](evidence/subagent-model-selection-2026-11-11.json)
+and D39.
+
+- Cause, read from `@deepseek-ai/dsh-tool-subagent` 0.2.2-rc.1: a session with
+  no recorded model-selection policy permits an explicit child route only when
+  that route is the parent route. `list_subagent_models` then shows the parent
+  model only.
+- Setting: the Host service
+  `@deepseek-ai/dsh-tool-subagent/model-selection-settings` has the fields
+  `enabled` and `allowedModels`. The web and desktop apps show them on
+  **Plugins → Subagent → Model selection**. The default is off.
+- dsh records the route list in each new top-level session. A child session
+  inherits the list. A change to the setting does not apply to a session that
+  exists.
+- Measured on 2026-11-11 in an isolated `DSH_HOME` headless profile with dsh
+  0.2.2-rc.1 and the linked plugin source at commit `22db620`. The profile
+  enabled `modelSelection` and `modelDiscovery` on the `subagent` tool.
+- Measured, setting off: a parent on `haiku` saw one model, and a child on
+  `sonnet` was refused with `child LLM route "claude-code-session/sonnet" is
+  not allowed for this Session`.
+- Measured, setting on with the routes `haiku` and `sonnet`: the parent saw
+  both models and the efforts of `sonnet`. The child started and answered. The
+  parent log shows the served model `claude-haiku-5-5`. The child log shows
+  the served model `claude-sonnet-5-5`.
+- The child uses the same route and the same subscription check. It has its own
+  dsh session and its own native Claude session. No signed thinking moves
+  between the two sessions.
+- Unverified: the settings page itself, a child on `claude-fable-5-2` or
+  `opus`, and an explicit route on `subagent_fork`.
+
 ## Commands
 
 The engine range is Node.js `>=24.9.0`. The checks below ran on Node.js
@@ -297,7 +331,7 @@ has 200 tests and `pack:check` accepted 65 files with a temporary npm cache. A s
 file list has 65 files. The `npm pack --dry-run` check on 2026-11-11 used a
 temporary npm cache, because the default npm cache in this environment has
 root-owned entries and `npm pack` cannot write to it. The package version is
-0.2.1. No license is selected. The suite does not read Claude credentials and
+0.2.2. No license is selected. The suite does not read Claude credentials and
 does not contact a model. `supportedModels()` is not called.
 
 `npm run test:live` exits with code 2. It starts no Claude process. `test`,

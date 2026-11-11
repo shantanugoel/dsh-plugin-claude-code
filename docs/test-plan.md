@@ -402,6 +402,13 @@ The runs used an isolated `DSH_HOME` headless profile, not the desktop profile.
 | L05 | `CLAUDE_CODE_MAX_OUTPUT_TOKENS` reaches the native request | Unverified: the headless task path has no `maxTokens` control; offline row O39 only |
 | L06 | A many-image session offloads safely or fails with the documented code | Unverified: no dsh profile run with more than 80 retained images |
 | L07 | Several tool calls in one native generation complete through dsh | Measured after the D34 fix: 3 and 4 sequential `bash` calls, a failed tool result followed by a completed call, and 2 calls were delivered to the model. Before the fix, every call after the first one failed |
+| L08 | Without a recorded dsh model-selection policy, a child route on another model is refused | Measured: parent `haiku`, child `sonnet` refused with `is not allowed for this Session`; `list_subagent_models` showed `haiku` only |
+| L09 | With the dsh **Model selection** setting on, a session on one Claude model starts a subagent on another allowed Claude model | Measured: parent served by `claude-haiku-5-5`, child served by `claude-sonnet-5-5`; the child answered |
+
+L08 and L09 are in
+[subagent-model-selection-2026-11-11.json](evidence/subagent-model-selection-2026-11-11.json).
+They set the Host service fields through a patch overlay. They did not operate
+the settings page.
 
 The plugin reports `unavailable` honestly when a check fails. Do not describe a
 correct answer, a stored replay envelope, or an accepted audit as retention

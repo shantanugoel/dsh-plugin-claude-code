@@ -955,3 +955,46 @@ model other than `haiku` were not measured live.
 
 Evidence: [unknown-tool-probe-2026-11-11.json](evidence/unknown-tool-probe-2026-11-11.json)
 and offline rows O106 to O113.
+
+## D39. Keep subagent model selection a dsh setting
+
+Problem (issue #16): a session on `claude-code-session/sonnet` could not start
+a subagent on another Claude model. `list_subagent_models` showed one model.
+
+Cause, read from `@deepseek-ai/dsh-tool-subagent` 0.2.2-rc.1:
+
+- The `subagent` tool and `list_subagent_models` read a route list from the
+  session event `subagent/model-selection-policy`.
+- With no such event, an explicit child route is permitted only when it is the
+  parent route. The catalog of the adapter is not read for other models.
+- The Host service `@deepseek-ai/dsh-tool-subagent/model-selection-settings`
+  writes the event when a new top-level session starts and its `enabled` field
+  is true. A child session inherits the event. The default is off.
+- The plugin has no input to this decision. Its catalog (D10) already lists
+  each model from `supportedModels()`.
+
+Decision: change no plugin code. Do not add a profile patch that enables the
+setting, because the list of permitted child routes is a user decision in dsh.
+Record the setting and the new-session rule in the README.
+
+Rules check: a child on another model uses the same route, the same official
+executable, and the same first-party subscription check. It has its own dsh
+session and its own native session, so signed thinking stays in one native
+session. No header changes.
+
+Measured on 2026-11-11 in an isolated `DSH_HOME` headless profile (dsh
+0.2.2-rc.1, plugin source at commit `22db620`, parent model `haiku`):
+
+- Setting off: `list_subagent_models` showed `haiku` only, and a child on
+  `sonnet` was refused with the message of the issue.
+- Setting on with the routes `haiku` and `sonnet`: the list showed both
+  models, the child started, and the child answered. The session logs show the
+  served models `claude-haiku-5-5` for the parent and `claude-sonnet-5-5` for
+  the child.
+
+Limits: the measurement set the service fields through a patch overlay. The
+settings page was not operated. A child on `claude-fable-5-2` or `opus` and
+an explicit route on `subagent_fork` were not run.
+
+Evidence: [subagent-model-selection-2026-11-11.json](evidence/subagent-model-selection-2026-11-11.json)
+and live rows L08 and L09.

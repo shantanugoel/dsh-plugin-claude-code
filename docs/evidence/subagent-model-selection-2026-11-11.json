@@ -1,0 +1,68 @@
+{
+  "measurement_date": "2026-11-11",
+  "issue": 16,
+  "environment": {
+    "dsh_cli": "0.2.2-rc.1",
+    "claude_code_cli": "2.1.319",
+    "agent_sdk": "0.3.322",
+    "plugin_package": "dsh-plugin-claude-code 0.2.1 source tree at commit 22db620, linked into the profile",
+    "dsh_home": "isolated DSH_HOME; profile from the shipped headless template",
+    "profile_patch": "agent-default-model claude-code-session/haiku; tool-subagent with modelSelection true and modelDiscovery true",
+    "route": "claude-code-session; parent model haiku; requested child model sonnet",
+    "desktop_profile_used": false
+  },
+  "cause": {
+    "owner": "dsh package @deepseek-ai/dsh-tool-subagent 0.2.2-rc.1, not the plugin",
+    "rule": "A session with no recorded subagent/model-selection-policy event permits an explicit child route only when it is equal to the parent route. list_subagent_models then shows the parent model only.",
+    "setting": "Host service @deepseek-ai/dsh-tool-subagent/model-selection-settings (entry id subagent-model-selection-settings), fields enabled and allowedModels. The web and desktop profiles show it on Plugins, Subagent, Model selection.",
+    "sampling": "dsh records the route list in each new top-level session when the agent is created. A child session inherits it. A later settings change applies to new sessions only.",
+    "plugin_catalog": "The plugin lists each model from supportedModels(). The enabled run shows that dsh reads this list."
+  },
+  "method": [
+    "One task text for both runs: call list_subagent_models with no arguments, with the provider, and with the provider and model sonnet; then start a subagent with provider claude-code-session and model sonnet and the prompt \"Reply with the single word PONG.\"",
+    "Control run: dsh --profile <profile> --json with the profile patch only.",
+    "Policy run: the same command plus --patch with an overlay that inserts the settings service with enabled true and allowedModels claude-code-session/haiku and claude-code-session/sonnet.",
+    "Read the dsh session logs of the parent session and the child session after each run."
+  ],
+  "checks": [
+    {
+      "id": "L08",
+      "item": "Without a recorded policy, a child route on another model is refused",
+      "result": "measured",
+      "observed": [
+        "list_subagent_models({}) returned: claude-code-session — Claude Code session",
+        "list_subagent_models({provider}) returned one model: claude-code-session/haiku — Haiku 5.5",
+        "list_subagent_models({provider, model: sonnet}) failed: child LLM route \"claude-code-session/sonnet\" is not allowed for this Session",
+        "subagent({provider, model: sonnet}) failed: child LLM route \"claude-code-session/sonnet\" is not allowed for this Session; without a recorded model-selection policy, explicit selection (including reasoning_effort) is limited to the parent route",
+        "The parent session log has no subagent/model-selection-policy event."
+      ]
+    },
+    {
+      "id": "L09",
+      "item": "With the dsh setting enabled, a session on one Claude model starts a subagent on another allowed Claude model",
+      "result": "measured",
+      "observed": [
+        "The parent session log has a subagent/model-selection-policy event with the two routes. The child session log has the same event.",
+        "list_subagent_models({provider}) returned claude-code-session/sonnet — Sonnet 5.5 and claude-code-session/haiku — Haiku 5.5, with the catalog descriptions.",
+        "list_subagent_models({provider, model: sonnet}) returned the efforts low, medium, high, xhigh, max.",
+        "subagent({provider, model: sonnet}) returned: started subagent <id>. The parent reported the child answer PONG.",
+        "The parent session log records the served model claude-haiku-5-5. The child session log records the requested model sonnet and the served model claude-sonnet-5-5."
+      ]
+    }
+  ],
+  "rules_check": {
+    "route": "The child uses the same claude-code-session route, the same official executable, and the same first-party subscription check. The plugin changed no header and read no credential.",
+    "signed_thinking": "The child has its own dsh session and its own native Claude session. No signed thinking block moves between the parent session and the child session.",
+    "plugin_code_change": "none"
+  },
+  "model_requests": "The two runs sent a small number of haiku requests and one sonnet child turn through the subscription route.",
+  "no_direct_model_request": true,
+  "raw_capture_committed": false,
+  "raw_outputs": ".local/evidence/subagent-model-selection-2026-11-11/ (control-out.jsonl, policy-out.jsonl, the task text, and the two patch files)",
+  "not_proven": [
+    "The settings page of the web or desktop app was not operated. The measurement set the same Host service fields through a profile patch overlay.",
+    "A child on claude-fable-5-2 or opus was not run. The policy is an exact route list, and the catalog lists these ids.",
+    "An explicit child route on the subagent_fork tool. The shipped presets do not expose route fields on that tool.",
+    "Retention of signed thinking in the child session."
+  ]
+}

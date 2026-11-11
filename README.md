@@ -23,7 +23,7 @@ version, and the exemption command. The exemption records one exact plugin
 version for one exact dsh version:
 
 ```sh
-dsh plugin --profile <profile> allow-version dsh-plugin-claude-code@0.2.1 --dsh-version <running-version> --accept-risk
+dsh plugin --profile <profile> allow-version dsh-plugin-claude-code@0.2.2 --dsh-version <running-version> --accept-risk
 ```
 
 Use the exemption only after you accept the risk. A new dsh release needs a
@@ -81,6 +81,45 @@ already on. Installation does not select a model or send a prompt.
 Start a new session. Select **Claude Code session** as the provider, then select
 a model. The model list comes from the installed Claude Code CLI. A main session
 and a subagent session can each use a model on this route.
+
+### Use another model for a subagent
+
+By default, dsh lets a subagent use only the model of its parent session. A
+request for another model fails with `child LLM route "claude-code-session/<model>"
+is not allowed for this Session`. This is a dsh setting. It is not a plugin
+limit.
+
+1. Open **Plugins → Subagent** in the dsh web or desktop app.
+2. In **Model selection**, set the permission switch to on.
+3. Select each **Claude Code session** model that a subagent can use. Include
+   the model of the main session.
+4. Select **Save**.
+5. Start a new session. dsh records the list when a session starts. A session
+   that exists keeps its old list.
+
+Use the model id that the list shows. For example, `claude-fable-5-2` is
+Fable 5.2 and `fable` is Fable 5.1. A subagent on another model uses the same
+subscription login and its own Claude session.
+
+A profile without that page can set the same fields in its
+`cordis.patch.yml`. The `subagent` tool of that profile must also have
+`modelSelection: true`:
+
+```yaml
+- insert:
+    - id: subagent-model-selection-settings
+      name: '@deepseek-ai/dsh-tool-subagent/model-selection-settings'
+      config:
+        enabled: true
+        allowedModels:
+          - provider: claude-code-session
+            model: sonnet
+          - provider: claude-code-session
+            model: claude-fable-5-2
+```
+
+The web and desktop profiles have this entry. In those profiles, use the
+settings page.
 
 The plugin disables Claude Code's built-in tools. dsh provides the tools and
 runs each call with its own sandbox and approvals.

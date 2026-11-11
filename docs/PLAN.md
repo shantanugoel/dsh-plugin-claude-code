@@ -565,3 +565,21 @@ behavior and the production adapter. No run used an installed dsh profile.
 - [ ] Measure an unknown tool call through an installed dsh profile.
 
 Completion: an unknown tool name does not end the user turn.
+
+## M17. Use another Claude model for a subagent
+
+Status on 2026-11-11: complete. The limit is a dsh setting. The plugin code did
+not change. Two live runs in an isolated dsh profile measured the limit and the
+setting (D39).
+
+- [x] Find the dsh code that makes the list of permitted child routes.
+- [x] Check that the plugin catalog lists each model for a subagent.
+- [x] Check the rules in `AGENTS.md` for a child on another model.
+- [x] Measure a refused child route with the setting off (L08).
+- [x] Measure a child on another model with the setting on (L09).
+- [x] Record the setting in the README and in `docs/compatibility.md`.
+- [ ] Operate the settings page in a web or desktop profile and start a child
+  on `claude-fable-5-2`.
+
+Completion: the documents state the exact limit and the setting that changes
+it, and a session on one Claude model started a subagent on another model.
