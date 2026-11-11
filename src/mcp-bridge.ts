@@ -32,6 +32,8 @@ interface Waiter {
  */
 export class McpBridge {
   private expected: readonly string[] = []
+  /** True when no published call of this turn has a native handler. */
+  private nativeAnswered = false
   private readonly staged = new Map<string, NativeToolResult>()
   private readonly waiters = new Map<string, Waiter>()
   private readonly delivered = new Set<string>()
@@ -76,13 +78,22 @@ export class McpBridge {
     })
   }
 
-  expect(callIds: readonly string[]): void {
+  /**
+   * Publish the call ids of one turn. `handledIds` names the calls that have a
+   * native handler. A call outside the dsh tool list has none: the CLI answers
+   * it itself and sends the next request at once. When no call of the turn has
+   * a handler, a parked handler can thus belong to the next turn, so this
+   * method and stage() leave it parked. The next turn with a handled call
+   * refuses a handler outside its ids.
+   */
+  expect(callIds: readonly string[], handledIds: readonly string[] = callIds): void {
+    this.nativeAnswered = callIds.length > 0 && handledIds.length === 0
     // A parked handler for an id outside this turn's published calls can never
     // receive a result. Refuse it now, so it does not wait for the long result
     // deadline. A handler of this turn stays parked for its stage().
     const published = new Set(callIds)
     for (const [callId, waiter] of this.waiters) {
-      if (published.has(callId)) continue
+      if (published.has(callId) || this.nativeAnswered) continue
       this.waiters.delete(callId)
       waiter.reject(pluginFailure(
         'TOOL_RESULT_MISMATCH',
@@ -114,13 +125,17 @@ export class McpBridge {
     for (const [callId, waiter] of this.waiters) {
       const staged = this.staged.get(callId)
       if (staged === undefined) {
+        // After a turn with no handled call, this handler belongs to the next
+        // turn. Keep it parked for that turn's expect() and stage().
+        if (this.nativeAnswered) continue
+        this.waiters.delete(callId)
         waiter.reject(pluginFailure('TOOL_RESULT_MISMATCH', 'The tool handler has no staged result.'))
         continue
       }
+      this.waiters.delete(callId)
       this.delivered.add(callId)
       waiter.resolve(staged)
     }
-    this.waiters.clear()
   }
 
   /** Reject parked handlers. This does not invent a tool result. */

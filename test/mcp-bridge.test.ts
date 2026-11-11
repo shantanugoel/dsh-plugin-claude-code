@@ -58,6 +58,46 @@ test('a handler with no matching call id is refused when the batch releases', as
   })
 })
 
+test('a handler stays parked across a turn whose calls have no native handler', async () => {
+  const bridge = new McpBridge()
+  // The CLI answers an unknown tool itself and continues. The handler of its
+  // next response can arrive before or after the unknown turn is published.
+  const early = bridge.wait('call-2', 2_000)
+  bridge.expect(['unknown-1'], [])
+  const late = bridge.wait('call-3', 2_000)
+  bridge.stage([result('unknown-1')])
+  assert.equal(bridge.deliveryCount, 0)
+  bridge.expect(['call-2', 'call-3'])
+  bridge.stage([result('call-2'), result('call-3')])
+  assert.equal((await early).callId, 'call-2')
+  assert.equal((await late).callId, 'call-3')
+})
+
+test('a stale handler after an unknown-tool turn is refused by the next handled turn', async () => {
+  const bridge = new McpBridge()
+  bridge.expect(['unknown-1'], [])
+  const stray = bridge.wait('call-9', 2_000)
+  bridge.stage([result('unknown-1')])
+  bridge.expect(['call-2'])
+  await assert.rejects(stray, (error: unknown) => {
+    assert.equal((error as { code?: unknown }).code, 'TOOL_RESULT_MISMATCH')
+    return true
+  })
+})
+
+test('a turn with one handled call still refuses a handler outside its ids', async () => {
+  const bridge = new McpBridge()
+  bridge.expect(['call-1', 'unknown-1'], ['call-1'])
+  const known = bridge.wait('call-1', 2_000)
+  const stray = bridge.wait('call-9', 2_000)
+  bridge.stage([result('call-1'), result('unknown-1')])
+  assert.equal((await known).callId, 'call-1')
+  await assert.rejects(stray, (error: unknown) => {
+    assert.equal((error as { code?: unknown }).code, 'TOOL_RESULT_MISMATCH')
+    return true
+  })
+})
+
 test('a repeated handler for one call id is refused', async () => {
   const bridge = new McpBridge()
   bridge.expect(['call-1'])

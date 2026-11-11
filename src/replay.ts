@@ -56,6 +56,11 @@ export interface ReplayV1 {
   readonly retentionAudit: 'accepted' | 'unavailable'
   /** The recorded import when this turn started a new native generation. */
   readonly generationChange?: GenerationChangeV1
+  /**
+   * Sanitized names of the tools that this response called outside the dsh
+   * tool list. Absent when every call named a dsh tool. No arguments are kept.
+   */
+  readonly unknownToolNames?: readonly string[]
 }
 
 /** Refuse the per-block replay shape. Response-level data has no `blocks` field. */
@@ -97,6 +102,10 @@ export function parseReplay(value: unknown): ReplayV1 {
     throw pluginFailure('REPLAY_STATE_INVALID', 'Unavailable retention evidence is stored as a request record.')
   }
   const generationChange = parseGenerationChange(value['generationChange'])
+  const unknownToolNames = value['unknownToolNames']
+  if (unknownToolNames !== undefined && (!isStringArray(unknownToolNames) || unknownToolNames.length === 0)) {
+    throw pluginFailure('REPLAY_STATE_INVALID', 'Replay data has invalid unknown tool names.')
+  }
   return {
     format: 'claude-session-v1',
     generationId: requiredString(value, 'generationId'),
@@ -112,6 +121,7 @@ export function parseReplay(value: unknown): ReplayV1 {
     toolNameMap,
     retentionAudit,
     ...(generationChange === undefined ? {} : { generationChange }),
+    ...(unknownToolNames === undefined ? {} : { unknownToolNames: [...unknownToolNames] }),
   }
 }
 

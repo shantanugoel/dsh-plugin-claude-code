@@ -1,0 +1,146 @@
+{
+  "measurement_date": "2026-11-11",
+  "topic": "A native response that calls a tool outside the dsh tool list (issue #15)",
+  "environment": {
+    "claude_code_cli": "2.1.319",
+    "agent_sdk": "0.3.322",
+    "plugin_package": "dsh-plugin-claude-code 0.2.1",
+    "plugin_source": "local checkout at 6743f77 plus this fix",
+    "model_requested": "haiku",
+    "dsh_in_the_loop": false,
+    "tool_list": [
+      "run_code (synthetic, returns a fixed token)"
+    ],
+    "prompt": "Synthetic. The system prompt names a hidden tool bash. The user text asks for a direct call to bash."
+  },
+  "native_session_probe": {
+    "script": "scripts/probe-unknown-tool.mjs",
+    "layer": "production launch plan and production native session; the script parks each handler and releases it 3 s after the stop",
+    "single": {
+      "native_tool_list": [
+        "mcp__dsh__dsh__run_code"
+      ],
+      "first_response": "thinking block, then tool_use bash {\"command\":\"pwd\"}; stop tool_use",
+      "handler_called_for_unknown_id": false,
+      "cli_tool_result": {
+        "is_error": true,
+        "content": "<tool_use_error>Error: No such tool available: bash</tool_use_error>"
+      },
+      "next_request_sent_without_plugin_input": true,
+      "ms_from_first_stop_to_next_response_block": [
+        2697,
+        2140
+      ],
+      "next_response": "tool_use mcp__dsh__dsh__run_code; its handler was called before the 3 s release of the first step",
+      "outcome": "end_turn with the text DONE",
+      "sdk_index_entries": 3,
+      "api_requests": 3,
+      "other_index_entries": "1 (generate_session_title)",
+      "request_audit_before_fix": "request 1 accepted; requests 2 and 3 failed with \"earlier message prefix differs\""
+    },
+    "mixed": {
+      "first_response": "one API message: thinking, tool_use run_code, tool_use bash",
+      "delivery": "separate assistant messages with the same message id; the run_code handler was called; the bash block arrived after a 3 s wait in the request-audit read (before the fix)",
+      "second_request_user_message": [
+        "tool_result run_code: PROBE-TOKEN-42",
+        "tool_result bash: is_error true, No such tool available: bash"
+      ],
+      "outcome": "end_turn with the text DONE",
+      "sdk_index_entries": 2,
+      "api_requests": 2
+    },
+    "control": "one run_code call and DONE; both requests stored request evidence; the model produced no thinking block"
+  },
+  "adapter_probe_after_fix": {
+    "script": "scripts/probe-unknown-tool-adapter.mjs",
+    "layer": "production adapter, auth guard, spend gate, and SDK runtime; a script takes the place of the dsh agent loop and waits 3 s before it returns each result",
+    "dsh_error_text_used": "unknown tool bash: only run_code is callable directly (synthetic stand-in)",
+    "single": {
+      "outcome": "stop",
+      "native_generations": 1,
+      "steps": [
+        {
+          "step": 1,
+          "published": [
+            "reasoning",
+            "tool-call bash"
+          ],
+          "finish": "tool-calls",
+          "unknownToolNames": [
+            "bash"
+          ],
+          "retentionAudit": "accepted"
+        },
+        {
+          "step": 2,
+          "published": [
+            "reasoning",
+            "tool-call run_code"
+          ],
+          "finish": "tool-calls",
+          "unknownToolNames": [],
+          "retentionAudit": "accepted"
+        },
+        {
+          "step": 3,
+          "published": [
+            "text DONE"
+          ],
+          "finish": "stop",
+          "unknownToolNames": [],
+          "retentionAudit": "accepted"
+        }
+      ]
+    },
+    "mixed": {
+      "outcome": "stop",
+      "native_generations": 1,
+      "steps": [
+        {
+          "step": 1,
+          "published": [
+            "reasoning",
+            "tool-call run_code"
+          ],
+          "finish": "tool-calls",
+          "unknownToolNames": [],
+          "retentionAudit": "accepted"
+        },
+        {
+          "step": 2,
+          "published": [
+            "tool-call bash"
+          ],
+          "finish": "tool-calls",
+          "unknownToolNames": [
+            "bash"
+          ],
+          "retentionAudit": "unavailable",
+          "note": "second stop of the same API message; no new request; no 3 s wait"
+        },
+        {
+          "step": 3,
+          "published": [
+            "reasoning",
+            "text DONE"
+          ],
+          "finish": "stop",
+          "unknownToolNames": [],
+          "retentionAudit": "accepted"
+        }
+      ]
+    }
+  },
+  "offline_result": "212 Node tests pass; npm run check passes",
+  "not_measured": [
+    "An unknown tool call through an installed dsh profile. The dsh result for an unknown tool name is taken from the issue report.",
+    "The cause of the original failure. The rejected name of that session was not recorded.",
+    "A name of the form mcp__dsh__<unknown>, and a model other than haiku.",
+    "A trailing user message after a result batch with no handled call. The plugin starts a recorded new generation for it; only the offline suite covers this.",
+    "Server validation of the retained thinking signature. The accepted audit compares client request records."
+  ],
+  "inference_requests": "About 20 requests on the subscription route for all runs.",
+  "no_direct_model_request": true,
+  "raw_capture_committed": false,
+  "account_data_committed": false
+}

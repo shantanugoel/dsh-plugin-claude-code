@@ -294,10 +294,10 @@ work the suite had 175 tests. After the history-change work on 2026-11-11 the
 suite had 195 tests. After the context-window and import-bound work the suite
 has 200 tests and `pack:check` accepted 65 files with a temporary npm cache. A separate direct-SDK many-image probe on
 2026-11-11 is a live check; its summary is under `docs/evidence/`. The packed
-file list has 63 files. The `npm pack --dry-run` check on 2026-11-11 used a
+file list has 65 files. The `npm pack --dry-run` check on 2026-11-11 used a
 temporary npm cache, because the default npm cache in this environment has
 root-owned entries and `npm pack` cannot write to it. The package version is
-0.2.0. No license is selected. The suite does not read Claude credentials and
+0.2.1. No license is selected. The suite does not read Claude credentials and
 does not contact a model. `supportedModels()` is not called.
 
 `npm run test:live` exits with code 2. It starts no Claude process. `test`,

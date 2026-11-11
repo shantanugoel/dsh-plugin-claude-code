@@ -343,6 +343,10 @@ interface ReplayV1 {
   nativeResponseBlocks: readonly unknown[];
   toolNameMap: Readonly<Record<string, string>>;
   generationChange?: GenerationChangeV1;
+  // Sanitized names of the called tools outside the dsh tool list. Absent
+  // when every call named a dsh tool. A list is not empty and holds no
+  // arguments.
+  unknownToolNames?: readonly string[];
 }
 // Store as { response: replayV1 }; omit ReplayEnvelope.blocks.
 ```
@@ -484,6 +488,46 @@ Handlers may arrive one at a time, after the full batch was published. Deliver
 each staged result once when its exact handler arrives. Keep duplicate delivery
 and unknown IDs as errors. Returning an error result is permitted only when
 dsh has recorded that outcome.
+
+A native response can call a tool outside the dsh tool list, for example a
+hidden dsh tool. This is not a turn failure. Measured on CLI 2.1.319 (D38): the
+CLI answers the call itself with the error result `No such tool available` and
+sends the next request in the same query. No native tool can run, because the
+launch has no built-in tool and the native tool list is checked. Apply these
+rules:
+
+- Publish the call to dsh in model order with its provider tool-use ID. dsh
+  then records the call and its own error result. The plugin does not make a
+  tool result.
+- The published name is the native name with each control or format character
+  replaced by `?` and with 64 characters at most. A sanitized name that equals
+  a dsh tool name returns `NATIVE_CONTEXT_MISMATCH` with the name in the
+  message. The replay block keeps the native name.
+- Unknown-tool arguments that are not a JSON object become `{}`. Malformed
+  arguments of a dsh tool stay `MALFORMED_RESPONSE`.
+- The stop-reason checks do not change. An unknown call with an `end_turn` or
+  `max_tokens` stop stays `MALFORMED_RESPONSE`, and the message lists the
+  sanitized names.
+- Store at most 8 different sanitized names of one response in
+  `unknownToolNames` of the replay envelope. Do not store arguments there.
+- Give the bridge the ids that have a native handler. When no call of a turn
+  has a handler, a parked handler can belong to the next native response.
+  Keep it parked through that turn's `expect()` and `stage()`. The next turn
+  with a handled call refuses a handler outside its ids.
+- The staged result of an unknown call has no handler and is not delivered.
+- When user messages follow a result batch in which no call has a handler,
+  do not send them mid-turn: the native turn can be complete already. Start one
+  recorded new generation with reason `invalid`. The import quotes the tool
+  outcome and sends the trailing input.
+
+The CLI sends parallel tool calls of one API message as separate assistant
+messages. Each one ends one dsh step, so a response with a dsh tool and an
+unknown tool becomes two dsh steps. Only the first stop of one API message
+reads a request record. A later stop of the same message has no new request,
+reads no record, and stores `retentionAudit: 'unavailable'`. The expected
+assistant blocks of the request audit include each block of the API message,
+also a thinking block that arrived in an earlier assistant message with no
+stop.
 
 When the frozen request holds user messages after the result batch, deliver them
 inside the same native turn. Send each message with `sendMidTurnUser` and then

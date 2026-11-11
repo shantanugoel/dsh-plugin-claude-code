@@ -492,6 +492,18 @@ export class ClaudeCodeAdapter extends LlmAdapter {
       yield* this.recoverGeneration(options, workspace, sessionId, live, 'image-budget', effort)
       return
     }
+    if (admission.kind === 'tool-results'
+      && trailingContent.length > 0
+      && live.pendingCalls.length > 0
+      && live.pendingCalls.every((call) => !call.known)) {
+      // No call of the pending batch has a parked native handler: the CLI
+      // answered each one itself and continued. Its native turn can be complete
+      // already, so a mid-turn user message could start a second native turn
+      // that no dsh step reads. Start one recorded new generation instead. The
+      // import quotes the completed tool outcome and sends the trailing input.
+      yield* this.recoverGeneration(options, workspace, sessionId, live, 'invalid', effort)
+      return
+    }
     live.retainedImageCount += addedImages.count
     live.retainedImageBytes += addedImages.bytes
     if (admission.kind === 'tool-results' && toolResults !== undefined) {
@@ -671,7 +683,15 @@ export class ClaudeCodeAdapter extends LlmAdapter {
       dshNames: live.dshNames,
       allowedNativeTools: live.allowedNativeTools,
     })
-    const replay = buildReplay(live, admission, translated.blocks, translated.nativeBlocks, translated.evidence, translated.auditAccepted)
+    const replay = buildReplay(
+      live,
+      admission,
+      translated.blocks,
+      translated.nativeBlocks,
+      translated.evidence,
+      translated.auditAccepted,
+      translated.unknownToolNames,
+    )
     const publication = publicationFrom({
       blocks: translated.blocks,
       nativeMessageIds: translated.nativeMessageIds,
@@ -682,7 +702,12 @@ export class ClaudeCodeAdapter extends LlmAdapter {
     live.pending = publication
     live.pendingCalls = translated.pendingCalls
     if (translated.pendingCalls.length > 0) {
-      live.bridge.expect(translated.pendingCalls.map((call) => call.id))
+      // A call outside the dsh tool list has no native handler. The bridge
+      // needs the handled ids to keep a handler of the next turn parked.
+      live.bridge.expect(
+        translated.pendingCalls.map((call) => call.id),
+        translated.pendingCalls.filter((call) => call.known).map((call) => call.id),
+      )
     }
     return [
       ...translated.chunks,
@@ -907,6 +932,7 @@ function buildReplay(
   nativeBlocks: readonly unknown[],
   evidence: unknown,
   auditAccepted: boolean,
+  unknownToolNames: readonly string[] = [],
 ): ReplayV1 {
   // An auxiliary call that replays a flattened import is never an audit of a
   // native signed prefix, even when its own turn carries request evidence.
@@ -926,6 +952,7 @@ function buildReplay(
     toolNameMap: live.toolNameMap,
     retentionAudit: audit ? 'accepted' : 'unavailable',
     ...(admission.kind === 'recovered' ? { generationChange: admission.generationChange } : {}),
+    ...(unknownToolNames.length === 0 ? {} : { unknownToolNames }),
   })
 }
 

@@ -217,6 +217,11 @@ async function consume(
   let turn: NativeTurnState = newNativeTurn()
   let latestAssistantError: unknown
   let servedModel: string | undefined
+  // Blocks of the current API message that arrived before its stop. The CLI
+  // can send a thinking block in its own assistant message with no stop.
+  let responseBlocks: unknown[] = []
+  // API message id of the last stop that read a request record.
+  let evidenceMessageId: string | undefined
   for await (const message of query) {
     if (message.type === 'system' && message.subtype === 'init') {
       if (typeof message.model === 'string' && message.model.trim() !== '') servedModel = message.model
@@ -232,12 +237,20 @@ async function consume(
       if (turn.stopSent) turn = { ...turn, stopSent: false, usageSent: false, blockCount: 0 }
       if (typeof message.error === 'string' && message.error.trim() !== '') latestAssistantError = message.error
       const advanced = advanceAssistantTurn(turn, message.message)
+      responseBlocks.push(...assistantNativeBlocks(advanced.events))
       if (advanced.events.some((event) => event.type === 'message-stop')) {
+        const messageId = typeof message.message.id === 'string' ? message.message.id : undefined
         // The request record for this response is complete before the response
         // stream ends. Publish the audit before the dsh stop event, so the dsh
         // finish stores the accepted or unavailable audit for this exact turn.
-        await appendEvidence(queue, capture)
-        capture?.recordAssistantResponse(assistantNativeBlocks(advanced.events), typeof message.message.id === 'string' ? message.message.id : undefined)
+        // A second stop of the same API message is a split parallel tool call.
+        // It has no new request, so it reads no record and waits for none.
+        if (messageId === undefined || messageId !== evidenceMessageId) await appendEvidence(queue, capture)
+        evidenceMessageId = messageId
+        // Record every block of the API message, including a thinking block
+        // that arrived in an earlier assistant message with no stop.
+        capture?.recordAssistantResponse(responseBlocks, messageId)
+        responseBlocks = []
       }
       for (const event of advanced.events) queue.push(event)
       turn = advanced.state

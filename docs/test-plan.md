@@ -2,8 +2,8 @@
 
 Use three test layers. Keep the result of each layer separate.
 
-Offline status on 2026-11-11: the Node suite covers rows O01 through O98 with
-synthetic data and the scripted runtime, and 193 tests pass. The dsh 0.2.2-rc.1
+Offline status on 2026-11-11: the Node suite covers rows O01 through O113 with
+synthetic data and the scripted runtime, and 212 tests pass. The dsh 0.2.2-rc.1
 LLM service, session store, and compaction balance functions are loaded in that
 suite. The real dsh LLM runtime is mounted for file and image projection tests
 and for the native error finish test. The agent loop is not driven. No offline
@@ -180,6 +180,21 @@ result delivery, opened session, close request, and remaining child handle.
 | O103 | The window reader: two reads of one model, different models together, a failed read, and a read after the retry interval | One CLI read for each model; one read at a time; a kept value needs no new read; a failure is tried again only after 30 seconds |
 | O104 | A result message with two `modelUsage` entries for an alias request | The served model id of the initialization message selects the entry; without it the entries are not attributed; the requested id and a canonical id also select an entry |
 | O105 | An import history longer than the limit | The text keeps the first message and the latest messages; one mark with the omitted count is between them; a short history has no mark |
+| O106 | One native response calls a tool outside the dsh tool list (`bash`) | The call is published with its name and call id; the finish is `tool-calls`; replay stores `unknownToolNames`; the dsh error result continues the same native session; no `NATIVE_CONTEXT_MISMATCH` |
+| O107 | The handler of the next native response arrives before dsh returns the result of an unknown call | The handler stays parked and receives its own result in the next batch |
+| O108 | One response with a dsh tool call and an unknown tool call | Both calls are published in model order; the dsh tool handler receives its result; the unknown result is not delivered |
+| O109 | A user message after a result batch in which each call is unknown | One new generation with reason `invalid`; no mid-turn send; the import has the tool outcome and the user text |
+| O110 | Unknown tool with a qualified name (`mcp__dsh__nonexistent`) or with arguments that are not an object | The name is kept; the arguments become `{}`; the same arguments for a dsh tool return `MALFORMED_RESPONSE` |
+| O111 | Unknown tool call with an `end_turn` stop | `MALFORMED_RESPONSE`; the message has the sanitized name and no arguments |
+| O112 | Unknown name with control characters, a long name, more than 8 names, and a sanitized name equal to a dsh tool name | `?` replaces each control character; 64 characters at most; 8 names at most; the collision returns `NATIVE_CONTEXT_MISMATCH` |
+| O113 | Replay data with `unknownToolNames`; bridge turns with no handled call | The valid list survives a round trip and an invalid list returns `REPLAY_STATE_INVALID`; a stale handler is refused by the next handled turn; a turn with one handled call refuses a handler outside its ids |
+
+Rows O106 to O113 are in `test/unknown-tool.test.ts` and
+`test/mcp-bridge.test.ts`. The live measurement is decision D38 and
+[the unknown-tool record](evidence/unknown-tool-probe-2026-11-11.json). The
+change in `src/official-session.ts` (the request audit of a split API message)
+has no offline test, because the offline suite does not load the SDK. The live
+probe measured it.
 
 Rows O97 and O98 are offline unit tests in `test/mcp-bridge.test.ts`. They
 reproduce a live defect that failed every tool call after the first tool call of

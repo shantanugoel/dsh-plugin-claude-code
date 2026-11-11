@@ -877,3 +877,81 @@ values were not measured inside dsh.
 
 Evidence: [context-window-probe-2026-11-11.json](evidence/context-window-probe-2026-11-11.json)
 and offline rows O102 to O104.
+
+## D38. Publish a call to an unknown tool, do not fail the turn
+
+Problem (issue #15): a native response named a tool outside the dsh tool list.
+`publishedToolName()` returned `NATIVE_CONTEXT_MISMATCH` and the user turn
+ended. dsh itself answers an unknown tool name with an error result and
+continues. The rejected name of the reported session was not recorded, so its
+cause is not proven. The probable cause is a direct call to a hidden tool in a
+session that offers `run_code` only.
+
+Measured on 2026-11-11 with the production launch plan and the production
+native session (Agent SDK 0.3.322, CLI 2.1.319, model `haiku`, one dsh tool
+`run_code`, a prompt that asks for a call to `bash`):
+
+- The model called `bash`. The native tool list had the dsh tool only.
+- The CLI answered the call itself. The next request had a `tool_result` with
+  `is_error: true` and the text
+  `<tool_use_error>Error: No such tool available: bash</tool_use_error>`. No
+  MCP handler was called for that id.
+- The CLI sent the next request in the same query with no input from the
+  plugin. The next response arrived 2.1 and 2.7 seconds after the first stop in
+  two recorded runs.
+- The handler of the next response (`run_code`) was called before a 3-second
+  simulated dsh step returned the result of the unknown call.
+- One `sdk` index entry was written for each API request (3 requests, 3
+  entries, plus one title entry).
+- A response with `run_code` and `bash` in one API message arrived as
+  separate assistant messages. The CLI ran the `run_code` handler, and the
+  second request had both results in one user message.
+- Before this change, the request audit of the second and third request
+  failed with "earlier message prefix differs". The cause was not the unknown
+  tool: the thinking block arrived in an assistant message with no stop, and
+  the expected blocks did not include it. A second stop of one API message
+  also waited 3 seconds for a request record that cannot exist.
+
+Decision:
+
+- Publish the unknown call to dsh with its sanitized name and its call id. Do
+  not drop the message and do not make a tool result in the plugin. This
+  follows the design review in the issue. A dropped message needs segment
+  logic in the reader and the translator, loses its text and thinking for the
+  user, and hides a real request from the dsh log.
+- Keep the stop-reason checks. Use `{}` for unknown-tool arguments that are not
+  an object. Refuse a sanitized name that equals a dsh tool name.
+- Record the sanitized names in `unknownToolNames` of the replay envelope and
+  in the message of a failure that still occurs.
+- The bridge keeps a parked handler through a turn that has no handled call.
+- Trailing user input after a batch with no handled call starts one recorded
+  new generation with reason `invalid`. In that state the native turn can be
+  complete, and a mid-turn message would start a native turn that no dsh step
+  reads. This case was not measured live.
+- The request audit records each block of one API message and reads one
+  request record for each API message.
+
+Measured after the change, through the production adapter with a script in
+the place of the dsh agent loop: the single case had three steps (`bash`,
+`run_code`, `DONE`) on one generation, each with `retentionAudit`
+`accepted`. The mixed case had three steps (`run_code`, `bash`, `DONE`) on one
+generation. Its second step had `unavailable`, because it has no new request,
+and it started with no 3-second wait.
+
+Known effects:
+
+- dsh shows a step for a tool that did not run natively.
+- The model saw the CLI error text. The dsh log has the dsh error text. A
+  later import quotes the dsh text.
+- If dsh runs a call that the plugin published as unknown, the model does not
+  see that result. dsh keeps control of that decision. No such case was
+  measured.
+- Usage of each request is reported on its own dsh step. Nothing is summed.
+
+Limits: the script used a synthetic dsh error text. No run used an installed
+dsh profile, so the dsh result for an unknown tool name is taken from the issue
+report and is not measured here. The `mcp__dsh__<unknown>` name form and a
+model other than `haiku` were not measured live.
+
+Evidence: [unknown-tool-probe-2026-11-11.json](evidence/unknown-tool-probe-2026-11-11.json)
+and offline rows O106 to O113.

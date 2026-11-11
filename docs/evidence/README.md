@@ -145,6 +145,18 @@ response all reached the model. The record lists the one gap: no live `ptc`
 rerun, because the headless profile has no agent-preset registry. The record
 contains no account data and no raw capture.
 
+## Unknown-tool probe
+
+[unknown-tool-probe-2026-11-11.json](unknown-tool-probe-2026-11-11.json) records
+the issue #15 live probes on 2026-11-11. They used SDK 0.3.322 and Claude Code
+2.1.319 with the subscription login and the model `haiku`. A session with one
+dsh tool was asked to call `bash`. The CLI answered that call itself with the
+error result `No such tool available: bash` and sent the next request. After
+the fix, the production adapter continued on one native generation in a single
+case and in a mixed case. A script took the place of the dsh agent loop, so the
+dsh result for an unknown tool name is not measured. The record contains no
+account data and no raw capture.
+
 ## Limits
 
 - This was a direct `claude -p` probe, not the planned SDK plugin.

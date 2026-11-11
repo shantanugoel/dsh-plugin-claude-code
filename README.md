@@ -23,7 +23,7 @@ version, and the exemption command. The exemption records one exact plugin
 version for one exact dsh version:
 
 ```sh
-dsh plugin --profile <profile> allow-version dsh-plugin-claude-code@0.2.0 --dsh-version <running-version> --accept-risk
+dsh plugin --profile <profile> allow-version dsh-plugin-claude-code@0.2.1 --dsh-version <running-version> --accept-risk
 ```
 
 Use the exemption only after you accept the risk. A new dsh release needs a

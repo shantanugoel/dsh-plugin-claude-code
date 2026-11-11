@@ -281,6 +281,12 @@ parked handler whose id is not in the newly published call list, so a stale or
 unknown id fails there and not at the long result deadline. See decision D34 and
 [the race record](evidence/bridge-tool-handler-race-2026-11-11.json).
 
+A call to a tool outside the dsh tool list has no handler. The CLI answers it
+itself and sends the next request. The plugin publishes that call to dsh and
+does not fail the turn. When no call of a turn has a handler, the bridge keeps
+a parked handler for the next turn. See decision D38 and the MCP section of
+[the contracts](contracts.md).
+
 For a user image, the adapter reads one exact request version from the
 attachment service and sends it as a base64 image block. It writes one stable
 text line before that block with the attachment identity and the request size.

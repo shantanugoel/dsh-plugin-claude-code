@@ -32,6 +32,32 @@ export interface PendingToolCall {
   readonly id: string
   readonly name: string
   readonly arguments: string
+  /**
+   * False when the native response named a tool outside the dsh tool list.
+   * No native handler waits for the result of such a call: the CLI answers it
+   * itself with an error result.
+   */
+  readonly known: boolean
+}
+
+/** Largest number of unknown tool names that one turn records. */
+export const MAX_UNKNOWN_TOOL_NAMES = 8
+
+/** Largest length of one recorded or published unknown tool name. */
+export const MAX_UNKNOWN_TOOL_NAME_LENGTH = 64
+
+/**
+ * Make an unknown native tool name safe for a record, an error message, and a
+ * dsh tool-call name. A control character or a non-character becomes `?`. The
+ * result has 64 characters at most. The arguments of the call are not part of
+ * this value.
+ */
+export function sanitizeUnknownToolName(name: string): string {
+  const cleaned = [...name]
+    .map((character) => /[\p{Cc}\p{Cf}\p{Cs}\p{Co}\p{Cn}\p{Zl}\p{Zp}]/u.test(character) ? '?' : character)
+    .slice(0, MAX_UNKNOWN_TOOL_NAME_LENGTH)
+    .join('')
+  return cleaned.trim() === '' ? '?' : cleaned
 }
 
 export interface NativeResponseBlock {
@@ -51,6 +77,8 @@ export interface TranslatedTurn {
   readonly blocks: readonly CanonicalBlock[]
   readonly nativeBlocks: readonly NativeResponseBlock[]
   readonly nativeMessageIds: readonly string[]
+  /** Sanitized names of the tools outside the dsh tool list, in model order. */
+  readonly unknownToolNames: readonly string[]
   readonly usage: TokenUsage
   readonly evidence: unknown
   readonly auditAccepted: boolean
@@ -91,6 +119,8 @@ export function blockKey(messageId: string, index: number): string {
  * A repeated partial event and its completed snapshot become one block.
  * A turn-error event becomes one thrown LlmError with its stable code.
  * Malformed tool arguments throw before a tool chunk is returned.
+ * A tool call outside the dsh tool list is published with its name. dsh then
+ * records its own error result for that call, and the turn continues.
  */
 export function translateTurn(events: readonly NativeEvent[], input: TranslateInput): TranslatedTurn {
   const blocks = new Map<string, OpenBlock>()
@@ -208,6 +238,7 @@ export function translateTurn(events: readonly NativeEvent[], input: TranslateIn
   const pendingCalls: PendingToolCall[] = []
   const projected: CanonicalBlock[] = []
   const nativeBlocks: NativeResponseBlock[] = []
+  const unknownToolNames: string[] = []
   let dshIndex = 0
   for (const block of order) {
     if (!block.closed && !block.snapshotted) {
@@ -224,6 +255,11 @@ export function translateTurn(events: readonly NativeEvent[], input: TranslateIn
       const published = publishTool(block, input)
       pendingCalls.push(published.call)
       projected.push(published.block)
+      if (!published.call.known
+        && unknownToolNames.length < MAX_UNKNOWN_TOOL_NAMES
+        && !unknownToolNames.includes(published.call.name)) {
+        unknownToolNames.push(published.call.name)
+      }
       const index = dshIndex
       dshIndex += 1
       const id = ToolCallId(published.call.id)
@@ -268,12 +304,15 @@ export function translateTurn(events: readonly NativeEvent[], input: TranslateIn
     throw pluginFailure('MALFORMED_RESPONSE', 'The native response stopped for tools but published none.')
   }
   if (stopReason === 'end_turn' && pendingCalls.length > 0) {
-    throw pluginFailure('MALFORMED_RESPONSE', 'The native response stopped but still contains tool calls.')
+    throw pluginFailure(
+      'MALFORMED_RESPONSE',
+      `The native response stopped but still contains tool calls.${unknownToolNote(unknownToolNames)}`,
+    )
   }
   if (stopReason === 'max_tokens' && pendingCalls.length > 0) {
     throw pluginFailure(
       'MALFORMED_RESPONSE',
-      'The native response hit the output-token limit with a tool call. The truncated call was not executed.',
+      `The native response hit the output-token limit with a tool call. The truncated call was not executed.${unknownToolNote(unknownToolNames)}`,
     )
   }
   chunks.push({ type: 'usage', usage })
@@ -285,6 +324,7 @@ export function translateTurn(events: readonly NativeEvent[], input: TranslateIn
     blocks: projected,
     nativeBlocks,
     nativeMessageIds: messageIds,
+    unknownToolNames,
     usage,
     evidence: auditAccepted ? evidenceBody(evidence) : null,
     auditAccepted,
@@ -379,19 +419,22 @@ function publishTool(block: OpenBlock, input: TranslateInput): {
   if (block.id === '' || block.name === '') {
     throw pluginFailure('MALFORMED_RESPONSE', 'A tool call is missing its id or name.')
   }
-  const name = publishedToolName(block.name, input)
+  const { name, known } = publishedToolName(block.name, input)
   let parsed: unknown
   try {
     parsed = JSON.parse(block.argumentsText) as unknown
   } catch {
-    throw pluginFailure('MALFORMED_RESPONSE', 'A tool call has malformed arguments.')
+    parsed = undefined
   }
   if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
-    throw pluginFailure('MALFORMED_RESPONSE', 'A tool call has malformed arguments.')
+    // The arguments of an unknown tool have no schema and are not executed.
+    // An empty object keeps the call publishable, so dsh can record its error.
+    if (known) throw pluginFailure('MALFORMED_RESPONSE', 'A tool call has malformed arguments.')
+    parsed = {}
   }
   const argumentsText = JSON.stringify(parsed)
   return {
-    call: { id: block.id, name, arguments: argumentsText },
+    call: { id: block.id, name, arguments: argumentsText, known },
     block: { type: 'tool-call', text: '', id: block.id, name, arguments: argumentsText },
   }
 }
@@ -401,15 +444,36 @@ function publishTool(block: OpenBlock, input: TranslateInput): {
  * (`mcp__dsh__<mapped name>`). The bridge map is keyed by the mapped name
  * without that qualifier. Accept both forms so a real native response resolves
  * to the exact dsh tool name.
+ *
+ * A name outside the dsh tool list is not a turn failure. Measured on CLI
+ * 2.1.319: the CLI answers such a call itself with the error result "No such
+ * tool available" and sends the next request. No native tool can run, because
+ * the launch has no built-in tool and the native tool list is checked. The
+ * call is published with its sanitized name, so dsh records the call and its
+ * own error result for the same call id.
  */
-function publishedToolName(name: string, input: TranslateInput): string {
+function publishedToolName(name: string, input: TranslateInput): { readonly name: string; readonly known: boolean } {
   const qualifier = `mcp__${DSH_MCP_SERVER}__`
   const bare = name.startsWith(qualifier) ? name.slice(qualifier.length) : name
   const mapped = input.nativeToDsh.get(name) ?? input.nativeToDsh.get(bare)
-  if (mapped !== undefined) return mapped
-  if (input.dshNames.has(name)) return name
-  if (input.dshNames.has(bare)) return bare
-  throw pluginFailure('NATIVE_CONTEXT_MISMATCH', 'The native response named a tool outside the dsh tool list.')
+  if (mapped !== undefined) return { name: mapped, known: true }
+  if (input.dshNames.has(name)) return { name, known: true }
+  if (input.dshNames.has(bare)) return { name: bare, known: true }
+  const sanitized = sanitizeUnknownToolName(name)
+  if (input.dshNames.has(sanitized)) {
+    // The sanitized form must not select a real dsh tool: the native session
+    // did not run this call, so dsh must not run a different tool for it.
+    throw pluginFailure(
+      'NATIVE_CONTEXT_MISMATCH',
+      `The native response named a tool outside the dsh tool list: "${sanitized}".`,
+    )
+  }
+  return { name: sanitized, known: false }
+}
+
+function unknownToolNote(names: readonly string[]): string {
+  if (names.length === 0) return ''
+  return ` Tool names outside the dsh tool list: ${names.map((name) => `"${name}"`).join(', ')}.`
 }
 
 function assertNativeTools(names: readonly string[], allowed: ReadonlySet<string>): void {

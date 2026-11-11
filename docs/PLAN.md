@@ -544,3 +544,24 @@ values from the CLI. No value was measured inside dsh.
 
 Completion: a first request of a model uses the window that the CLI states, not
 the 200000 fallback.
+
+## M16. Continue after a call to an unknown tool
+
+Status on 2026-11-11: offline work is complete. Live probes measured the CLI
+behavior and the production adapter. No run used an installed dsh profile.
+
+- [x] Measure what the CLI does with a call to a tool outside the tool list
+  (D38).
+- [x] Publish the unknown call to dsh and continue the native session.
+- [x] Keep a parked handler of the next response through a turn with no
+  handled call.
+- [x] Record the unknown names in the replay envelope and in failure messages.
+- [x] Start a recorded new generation for trailing user input after a batch
+  with no handled call.
+- [x] Record each block of a split API message in the request audit, and read
+  one request record for each API message.
+- [x] Add offline tests O106 to O113 and the probe scripts
+  `scripts/probe-unknown-tool.mjs` and `scripts/probe-unknown-tool-adapter.mjs`.
+- [ ] Measure an unknown tool call through an installed dsh profile.
+
+Completion: an unknown tool name does not end the user turn.
