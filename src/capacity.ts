@@ -2,10 +2,10 @@ import { pluginFailure } from './errors.js'
 import type { NativeEvent } from './sdk-runtime.js'
 
 /**
- * Context window used before the native runtime reports a measurement.
+ * Context window used when the CLI reports no value for a model.
  * This value is a documented fallback. It is not a measured provider limit.
- * The adapter replaces it for a model when the first result message reports
- * that model's `contextWindow`.
+ * Model discovery reads the window of each model from the CLI. A result message
+ * that reports that model's `contextWindow` replaces both values.
  */
 export const STATIC_CONTEXT_WINDOW_FALLBACK = 200_000
 
@@ -31,9 +31,28 @@ export function measuredModelCapacity(model: string): MeasuredModelCapacity | un
   return measured.get(model)
 }
 
-/** Resolve the context window of one requested model. */
-export function contextWindowFor(model: string): number {
-  return measured.get(model)?.contextWindow ?? STATIC_CONTEXT_WINDOW_FALLBACK
+/**
+ * Resolve the context window of one requested model.
+ * Order: the result-message measurement, the window that model discovery read
+ * from the CLI, then the static fallback.
+ */
+export function contextWindowFor(model: string, discovered?: number): number {
+  return measured.get(model)?.contextWindow
+    ?? (discovered !== undefined && isPositiveInteger(discovered) ? discovered : STATIC_CONTEXT_WINDOW_FALLBACK)
+}
+
+/**
+ * Read the context window from one CLI context-usage report.
+ * The report has two window fields. Use the smaller valid value, so the
+ * reported window is not larger than a value the CLI states.
+ */
+export function contextWindowFromUsage(usage: {
+  readonly maxTokens?: unknown
+  readonly rawMaxTokens?: unknown
+} | undefined): number | undefined {
+  const values = [usage?.maxTokens, usage?.rawMaxTokens]
+    .filter((value): value is number => typeof value === 'number' && isPositiveInteger(value))
+  return values.length === 0 ? undefined : Math.min(...values)
 }
 
 /**

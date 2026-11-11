@@ -25,3 +25,8 @@ export type PluginFailureCode = (typeof PLUGIN_FAILURE_CODES)[number]
 export function pluginFailure(code: PluginFailureCode, message: string): LlmError {
   return new LlmError(message, code)
 }
+
+/** True when a value is a plugin failure with this code. */
+export function isPluginFailure(error: unknown, code: PluginFailureCode): boolean {
+  return error instanceof LlmError && error.code === code
+}

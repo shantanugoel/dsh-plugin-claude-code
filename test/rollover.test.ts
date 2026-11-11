@@ -638,6 +638,42 @@ test('the import is deterministic and bounded', () => {
   assert.equal(bounded.importedText.includes('omitted from this bounded import'), true)
 })
 
+test('a long import keeps the first message and the latest messages', () => {
+  const messages: { role: string; content: { type: 'text'; text: string }[] }[] = [
+    { role: 'user', content: [{ type: 'text', text: 'FIRST-TASK' }] },
+  ]
+  for (let index = 0; index < 80; index += 1) {
+    messages.push({ role: 'assistant', content: [{ type: 'text', text: `step-${index}-${'z'.repeat(4_000)}` }] })
+    messages.push({ role: 'user', content: [{ type: 'text', text: `reply-${index}` }] })
+  }
+  messages.push({ role: 'assistant', content: [{ type: 'text', text: 'LATEST-ANSWER' }] })
+  messages.push({ role: 'user', content: [{ type: 'text', text: 'next' }] })
+  const plan = planRollover({ messages: messages as unknown as GenerateOptions['messages'], reason: 'history-change', now: NOW })
+  const text = plan.importedText
+  assert.equal(text.length <= IMPORT_MAX_CHARS + 2_000, true)
+  assert.equal(text.includes('FIRST-TASK'), true)
+  assert.equal(text.includes('LATEST-ANSWER'), true)
+  assert.equal(text.includes('step-79-'), true)
+  assert.equal(text.includes('reply-79'), true)
+  assert.equal(text.includes('step-0-'), false)
+  assert.equal(text.includes('step-40-'), false)
+  // One mark is between the first message and the kept latest messages.
+  const mark = text.match(/\[\.\.\. (\d+) earlier messages omitted from this bounded import \.\.\.\]/)
+  assert.ok(mark !== null)
+  assert.equal(text.indexOf('FIRST-TASK') < text.indexOf(mark[0]), true)
+  assert.equal(text.indexOf(mark[0]) < text.indexOf('LATEST-ANSWER'), true)
+  assert.equal(text.split('earlier messages omitted').length, 2)
+  // The count agrees with the kept messages. The record counts every message.
+  const keptSteps = (text.match(/"step-\d+-/g) ?? []).length
+  const keptReplies = (text.match(/"reply-\d+"/g) ?? []).length
+  assert.equal(keptSteps > 20, true)
+  assert.equal(Number(mark[1]), 160 - keptSteps - keptReplies)
+  assert.equal(plan.generationChange.importedMessageCount, 162)
+  // A short history has no mark.
+  const short = planRollover({ messages: messages.slice(-4) as unknown as GenerateOptions['messages'], reason: 'restore', now: NOW })
+  assert.equal(short.importedText.includes('omitted from this bounded import'), false)
+})
+
 test('a malformed recorded generation change is refused', () => {
   const base = {
     format: 'claude-session-v1',

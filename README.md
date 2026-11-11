@@ -167,8 +167,10 @@ message.
 - A prompt, tool, model, effort, output-cap, or workspace change starts a new
   Claude session with the new configuration and a recorded text import. The dsh
   session continues.
-- An edit to earlier messages still returns `REBASE_REQUIRED`. Start a new dsh
-  session for an edit.
+- A change to earlier messages also starts a new Claude session with a recorded
+  text import. The dsh session continues. Examples are a dsh tool-result prune
+  under context pressure, a compaction replacement, and an edit. The prompt
+  cache of the old Claude session is not used after this change.
 - A mid-turn message can contain text. An image in a message that arrives while
   a tool runs returns an error until a measurement covers that path.
 - Recovery starts a new Claude session. It does not keep the earlier signed
@@ -179,13 +181,27 @@ message.
 - A session-title call works. A compaction or summary call works as a recorded
   textual import in a separate Claude session. The import keeps no signed
   history, and the plugin does not report signed-prefix retention for it. A
-  request after dsh replaces the conversation surface needs the recorded
-  new-generation path. Without it, the route returns `REBASE_REQUIRED`.
+  request after dsh replaces the conversation surface starts a recorded new
+  generation.
   Automatic compaction, `/compact`, and a high-pressure model switch are not
   verified in a live dsh profile.
-- The 200000-token context window is a fallback until the first measurement. The
-  dsh token meter and the measured value have not been verified in a live dsh
-  profile.
+- The plugin reports the context window that the Claude CLI states for each
+  model. It reads the value with no model request. On 2026-11-11 the CLI stated
+  1000000 tokens for the alias `sonnet` and 200000 tokens for
+  `claude-sonnet-4-6`. A result message that reports a window replaces the read
+  value. If the read fails, the plugin uses a 200000-token fallback.
+- dsh starts its context-pressure work at the smaller of 80% of the context
+  window and the window minus the `headroomTokens` value of its
+  `compaction-basic` plugin. The default headroom is 65536 tokens. A
+  1000000-token window has a threshold of 800000 tokens. A 200000-token window
+  has a threshold of 134464 tokens. A large session uses more of your Claude
+  plan limit for each request. To start the pressure work earlier, set
+  `thresholdRatio` or a `modelPolicies` entry for this route in the dsh
+  profile. The dsh token meter with these values has not been verified in a live
+  dsh profile.
+- A recovery import has a limit of 120000 characters of quoted messages. A
+  longer history keeps its first message and its latest messages. The messages
+  between them are omitted with one mark.
 - Your Claude plan limits apply. Extra usage charges are possible. The plugin
   does not block them.
 

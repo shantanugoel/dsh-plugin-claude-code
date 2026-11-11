@@ -469,9 +469,10 @@ test('a prompt change during a tool wait imports the completed outcomes', async 
   assert.equal(importedInput.includes('no live tool calls'), true)
 })
 
-test('a changed earlier prefix with a configuration change still refuses', async () => {
+test('a changed earlier prefix with a configuration change starts one new generation', async () => {
   const runtime = new ScriptedNativeRuntime()
   runtime.enqueue(textTurn('answer', 'm1'))
+  runtime.enqueue(textTurn('recovered', 'm2'))
   const { model } = makeAdapter({ runtime, spendGate: gate() })
   const firstRequest: GenerateOptions = { ...textRequest('hello', 'edit-change'), system: 'First prompt.' }
   const first = await collect(model, firstRequest)
@@ -485,10 +486,12 @@ test('a changed earlier prefix with a configuration change still refuses', async
       userMessage('next'),
     ] as unknown as GenerateOptions['messages'],
   }
-  await assert.rejects(collect(model, changed), (error: unknown) => {
-    assert.ok(error instanceof LlmError)
-    assert.equal(error.code, 'REBASE_REQUIRED')
-    return true
-  })
-  assert.equal(runtime.starts.length, 1)
+  const second = await collect(model, changed)
+  assert.equal(second.at(-1)?.type, 'finish')
+  assert.equal(runtime.starts.length, 2)
+  assert.equal(runtime.starts[1]?.systemPrompt, 'Second prompt.')
+  const change = generationChange(second)
+  assert.equal(change['reason'], 'history-change')
+  assert.deepEqual(change['changedFields'], ['systemPrompt'])
+  assert.equal(sessionInput(runtime, 1).includes('"edited hello"'), true)
 })

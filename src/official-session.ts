@@ -216,8 +216,10 @@ async function consume(
 ): Promise<void> {
   let turn: NativeTurnState = newNativeTurn()
   let latestAssistantError: unknown
+  let servedModel: string | undefined
   for await (const message of query) {
     if (message.type === 'system' && message.subtype === 'init') {
+      if (typeof message.model === 'string' && message.model.trim() !== '') servedModel = message.model
       if (typeof message.session_id === 'string') identity.cliSessionId = message.session_id
       if (typeof message.claude_code_version === 'string') identity.cliVersion = message.claude_code_version
       if (typeof message.model === 'string') capture?.noteServedModel(message.model)
@@ -261,7 +263,7 @@ async function consume(
       }
       // The capacity event is informational. The native-error path above owns
       // the turn outcome, so a failed result reports no capacity for this turn.
-      const usageEvent = modelUsageEvent(message, requestedModel)
+      const usageEvent = modelUsageEvent(message, requestedModel, servedModel)
       if (usageEvent !== undefined) queue.push(usageEvent)
       continue
     }
@@ -314,17 +316,29 @@ function parseArguments(value: string | undefined): unknown {
 
 /**
  * Read the capacity of the requested model from one SDK result message.
- * The SDK keys `modelUsage` by the served model string. A single entry is used
- * when no key or canonical id matches the requested model. Two or more
- * unmatched entries are not attributed, because the result cannot prove which
- * one answered the requested model.
+ * The SDK keys `modelUsage` by the served model string. The requested id can
+ * be an alias, for example `sonnet`, so the key can differ from it. An entry
+ * matches when its key or canonical id is the requested id, or is the served
+ * model id that the CLI reported at initialization. A single entry is used
+ * when no entry matches. Two or more unmatched entries are not attributed,
+ * because the result cannot prove which one answered the requested model.
  */
-function modelUsageEvent(message: OfficialMessage, requestedModel: string): NativeEvent | undefined {
+export function modelUsageEvent(
+  message: { readonly modelUsage?: Readonly<Record<string, OfficialModelUsage>> },
+  requestedModel: string,
+  servedModel?: string,
+): NativeEvent | undefined {
   const usage = message.modelUsage
   if (usage === undefined) return undefined
   const entries = Object.entries(usage)
-  const exact = entries.filter(([key, entry]) => key === requestedModel || entry?.canonicalModel === requestedModel)
-  const entry = exact.length === 1 ? exact[0] : entries.length === 1 ? entries[0] : undefined
+  const matches = (id: string | undefined) => id === undefined
+    ? []
+    : entries.filter(([key, entry]) => key === id || entry?.canonicalModel === id)
+  const requested = matches(requestedModel)
+  const served = matches(servedModel)
+  const entry = requested.length === 1
+    ? requested[0]
+    : served.length === 1 ? served[0] : entries.length === 1 ? entries[0] : undefined
   if (entry === undefined) return undefined
   const [nativeModel, values] = entry
   const contextWindow = positiveInteger(values?.contextWindow)

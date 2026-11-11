@@ -43,6 +43,17 @@ subtype success and the answer `MANY-IMAGES-OK`. The result message reported
 documented request image limits. Thus, it does not measure the exact provider
 image limit. The raw capture is private and is not committed.
 
+## Context-window probe
+
+[context-window-probe-2026-11-11.json](context-window-probe-2026-11-11.json)
+records a direct Agent SDK probe on 2026-11-11. It used SDK 0.3.322 and Claude
+Code 2.1.319. For each model of the model list it started one query with that
+model and no user prompt, and it read the summary context report. Eleven models
+reported 1000000 tokens and three models reported 200000 tokens. The alias
+`sonnet` reported 1000000 tokens. The probe sent no user prompt. No network
+capture recorded it. The values are the windows that the CLI states for this
+account and this CLI version. They are not a provider acceptance test.
+
 ## Install distribution check
 
 [install-2026-11-11.json](install-2026-11-11.json) records the issue #1 checks on

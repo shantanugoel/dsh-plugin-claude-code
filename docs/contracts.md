@@ -60,7 +60,8 @@ A model that reports effort support offers that model's levels. The selected
 level is fixed for the native generation. A later change starts one new
 generation with the new level and a recorded `configuration-change`. A closed or
 absent generation recovers with a new generation and one recorded textual
-import. An earlier-prefix edit returns `REBASE_REQUIRED`.
+import. A changed earlier prefix on a live generation starts one new generation
+with a recorded `history-change`.
 
 `resolveModel` uses the catalog display name for `name` when the discovered row
 exists. It keeps the exact requested id for `id`. An uncatalogued id uses the raw
@@ -98,11 +99,23 @@ environment control. The exact value is part of the generation identity. A
 change starts one new generation with a recorded `configuration-change`. The
 value is not a sampling field and must not be dropped. Reject a non-positive or non-integer value before dispatch.
 
-`resolveModel` returns `context: { contextWindow }` for every model. The first
-value is the documented static fallback of 200000 tokens. It is not measured.
-Each native result message reports `modelUsage`. The adapter records that entry
-in a process-wide cache, keyed by the requested model id, and later calls use
-the measured `contextWindow`. Do not return `defaultMaxTokens` unless a measured
+`resolveModel` returns `context: { contextWindow }` for every model. The value
+has this order:
+
+1. The `contextWindow` of a native result message `modelUsage` entry. The
+   adapter records that entry in a process-wide cache, keyed by the requested
+   model id. An entry agrees when its key or canonical id is the requested id
+   or the served model id of the initialization message.
+2. The window that the CLI states for that model. The adapter starts one SDK
+   query with the model and no user prompt, reads
+   `getContextUsage({ detail: 'summary' })`, uses the smaller valid value of
+   `maxTokens` and `rawMaxTokens`, and closes the query. The read sends no model
+   request and does not call `setModel`. A successful read is kept for the
+   process lifetime. A failed read is tried again after 30 seconds. The reads
+   run one at a time.
+3. The documented static fallback of 200000 tokens. It is not measured.
+
+Do not return `defaultMaxTokens` unless a measured
 consumer needs it. The compaction reservation uses the request `maxTokens`, or
 zero when the request declares none. See decisions D20 and D21.
 
@@ -339,7 +352,7 @@ The recovery record in the replay envelope has this shape:
 ```ts
 interface GenerationChangeV1 {
   reason: 'abort' | 'timeout' | 'process-loss' | 'restore' | 'fork'
-    | 'configuration-change' | 'image-budget' | 'invalid';
+    | 'configuration-change' | 'image-budget' | 'history-change' | 'invalid';
   fromGenerationId: string | null;
   fromCliSessionId: string | null;
   importedMessageCount: number;
@@ -358,13 +371,19 @@ The recorded import has these rules:
 - Replace each historical image with its attachment id. Read no image bytes.
 - State that the text is historical context from a new Claude session with no
   previous thinking and no live tool calls.
-- Bound the text with a documented maximum and an explicit omission mark. The
-  same projected history returns the same text.
+- Bound the quoted messages with a documented maximum of 120000 characters. A
+  longer history keeps its first message and its latest messages. One explicit
+  omission mark with the number of omitted messages is between them. The same
+  projected history returns the same text.
 - Do not send old native blocks as the import. The dsh log keeps them.
 - The successful turn stores one record. The import, not a saved signature, is
   the recovery evidence.
 - A `configuration-change` record has a non-empty `changedFields` list. The
   order is model, effort, output cap, workspace, system prompt, and tools.
+- A `history-change` record starts when the request prefix does not agree with
+  the committed prefix of the live generation. It holds `changedFields` only
+  when the configuration changed in the same request. The route does not return
+  `REBASE_REQUIRED` to the user for this condition.
 - An `image-budget` record has no changed fields. Start it before a dispatch
   would put the live generation above 80 retained image occurrences or 20 MiB
   of retained encoded image bytes. The new generation receives the recorded
@@ -531,9 +550,10 @@ durability through the agent-owned persistence lifecycle. A detached
 `agent/rebase` hook or mutate the agent's current frozen request.
 
 A fixed-configuration change on a live generation starts one new generation
-with the current configuration and a recorded `configuration-change`. An
-earlier-prefix edit still returns `REBASE_REQUIRED`. Do not mark edits and
-compaction as supported until their integration tests pass.
+with the current configuration and a recorded `configuration-change`. A
+changed earlier prefix starts one new generation with a recorded
+`history-change`. Do not mark edits and compaction as verified in a live dsh
+profile until their integration tests pass.
 
 ## Authentication and spend checks
 
@@ -580,7 +600,7 @@ their names. They are non-retryable unless the failure is proven pre-dispatch.
 | `AUTH_ROUTE_REFUSED` | Authentication could use a disallowed billing route |
 | `BILLING_GUARD_UNAVAILABLE` | No accepted proof prevents a paid request |
 | `PAID_USAGE_REFUSED` | A paid route or paid-only model is known |
-| `REBASE_REQUIRED` | An earlier message prefix or identity changed, or a reset has no balanced boundary |
+| `REBASE_REQUIRED` | A context import through `recordContextImport` has no balanced tool boundary or no durability listener. A changed earlier prefix does not return this code; it starts a recorded `history-change` generation |
 | `SESSION_BUSY` | Another stream owns admission for this native session |
 | `REPLAY_STATE_INVALID` | Replay data is missing or inconsistent |
 | `NATIVE_CONTEXT_MISMATCH` | Native prompt, tools, or context differ |

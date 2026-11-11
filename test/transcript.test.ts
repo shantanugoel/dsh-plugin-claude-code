@@ -6,7 +6,7 @@ import { LlmError, type GenerateOptions, type StreamChunk } from '@deepseek-ai/d
 import { interpretAuthStatus } from '../src/auth.js'
 import { DEFAULT_DEADLINES } from '../src/deadlines.js'
 import { retentionProofAccepted } from '../src/evidence.js'
-import type { NativeEvent } from '../src/sdk-runtime.js'
+import type { NativeEvent, NativeUserInput } from '../src/sdk-runtime.js'
 import { EvidenceSpendGate, type SpendProof } from '../src/spend-gate.js'
 import { inputText, textRequest, textTurn } from './request.js'
 import { ScriptedNativeRuntime } from './scripted-runtime.js'
@@ -60,6 +60,29 @@ function continueRequest(sessionId: string, firstText: string, chunks: readonly 
       assistantMessage(chunks, 'assistant-1'),
       { role: 'user', content: [{ type: 'text', text: nextText }] },
     ] as GenerateOptions['messages'],
+  }
+}
+
+function toolMessage(callId: string, text: string) {
+  return {
+    role: 'tool' as const,
+    id: `result-${callId}`,
+    toolCallId: callId,
+    isError: false,
+    content: [{ type: 'text' as const, text }],
+    source: { kind: 'tool' as const, callId },
+  }
+}
+
+function toolTurn(callId: string, messageId: string): { events: NativeEvent[] } {
+  return {
+    events: [
+      { type: 'block-start', messageId, index: 0, blockType: 'tool-call' },
+      { type: 'tool-delta', messageId, index: 0, id: callId, name: 'echo', argumentsDelta: '{"value":"one"}' },
+      { type: 'block-stop', messageId, index: 0 },
+      { type: 'usage', inputTokens: 3, outputTokens: 2 },
+      { type: 'message-stop', messageId, stopReason: 'tool_use' },
+    ],
   }
 }
 
@@ -214,19 +237,127 @@ test('two leading user messages merge into one native prompt', async () => {
   ])
 })
 
-test('a changed earlier message requires a new generation before another prompt', async () => {
+test('a changed earlier message starts one recorded new generation', async () => {
   const runtime = new ScriptedNativeRuntime()
   runtime.enqueue(textTurn('answer'))
+  runtime.enqueue(textTurn('recovered', 'm2'))
+  runtime.enqueue(textTurn('continued', 'm3'))
   const { model } = makeAdapter({ runtime, spendGate: gate() })
   const first = await collect(model, textRequest())
   const changed = continueRequest('session-1', 'changed', first, 'next')
-  await assert.rejects(collect(model, changed), (error: unknown) => {
-    assert.ok(error instanceof LlmError)
-    assert.equal(error.code, 'REBASE_REQUIRED')
-    return true
+  const second = await collect(model, changed)
+  assert.equal(second.at(-1)?.type, 'finish')
+  assert.equal(runtime.starts.length, 2)
+  assert.equal(runtime.closeCount >= 1, true)
+  const change = replayResponse(second)['generationChange'] as Record<string, unknown>
+  assert.equal(change['reason'], 'history-change')
+  assert.equal(change['changedFields'], undefined)
+  assert.equal(change['importedMessageCount'], 2)
+  const imported = inputText(runtime.sessions[1]?.inputs[0] as NativeUserInput)
+  assert.equal(imported.includes('"changed"'), true)
+  assert.equal(imported.includes('"hello"'), false)
+  assert.equal(imported.endsWith('next'), true)
+  // The new generation holds the changed request, so the next step continues it.
+  const third = await collect(model, {
+    ...textRequest('later', 'session-1'),
+    messages: [
+      ...changed.messages,
+      assistantMessage(second, 'assistant-2'),
+      { role: 'user', content: [{ type: 'text', text: 'later' }] },
+    ] as GenerateOptions['messages'],
   })
-  assert.deepEqual(runtime.inputs.map(inputText), ['hello'])
+  assert.equal(third.at(-1)?.type, 'finish')
+  assert.equal(runtime.starts.length, 2)
+  assert.equal(replayResponse(third)['generationChange'], undefined)
+})
+
+test('a changed first message without an assistant message starts a new generation', async () => {
+  const runtime = new ScriptedNativeRuntime()
+  runtime.enqueue(textTurn('answer'))
+  runtime.enqueue(textTurn('recovered', 'm2'))
+  const { model } = makeAdapter({ runtime, spendGate: gate() })
+  await collect(model, textRequest())
+  const second = await collect(model, {
+    ...textRequest('edited', 'session-1'),
+    messages: [
+      { role: 'user', content: [{ type: 'text', text: 'earlier' }] },
+      { role: 'user', content: [{ type: 'text', text: 'edited' }] },
+    ] as GenerateOptions['messages'],
+  })
+  assert.equal(second.at(-1)?.type, 'finish')
+  assert.equal(runtime.starts.length, 2)
+  const change = replayResponse(second)['generationChange'] as Record<string, unknown>
+  assert.equal(change['reason'], 'history-change')
+  assert.equal(change['importedMessageCount'], 1)
+  const imported = inputText(runtime.sessions[1]?.inputs[0] as NativeUserInput)
+  assert.equal(imported.includes('"earlier"'), true)
+  assert.equal(imported.endsWith('edited'), true)
+})
+
+test('a pruned earlier tool result during a tool wait starts a new generation', async () => {
+  const runtime = new ScriptedNativeRuntime()
+  let delivered = false
+  runtime.enqueue(toolTurn('call-1', 'm1'))
+  runtime.enqueue({
+    ...toolTurn('call-2', 'm2'),
+    invokeHandlers: async (call) => {
+      await call('call-2')
+      delivered = true
+    },
+  })
+  runtime.enqueue(textTurn('finished after prune', 'm3'))
+  runtime.enqueue(textTurn('continued', 'm4'))
+  const { model } = makeAdapter({
+    runtime,
+    spendGate: gate(),
+    deadlines: { ...DEFAULT_DEADLINES, resultWaitMs: 60_000 },
+  })
+  const firstRequest: GenerateOptions = { ...textRequest('use tools', 'prune-wait'), tools: ECHO_TOOL }
+  const first = await collect(model, firstRequest)
+  const secondRequest: GenerateOptions = {
+    ...firstRequest,
+    messages: [
+      ...firstRequest.messages,
+      assistantMessage(first, 'assistant-1'),
+      toolMessage('call-1', 'long-original-outcome'),
+    ] as unknown as GenerateOptions['messages'],
+  }
+  const second = await collect(model, secondRequest)
+  assert.equal(second.at(-1)?.type, 'finish')
   assert.equal(runtime.starts.length, 1)
+  // dsh replaces the first tool result with a shorter copy before the next step.
+  const prunedRequest: GenerateOptions = {
+    ...firstRequest,
+    messages: [
+      ...firstRequest.messages,
+      assistantMessage(first, 'assistant-1'),
+      toolMessage('call-1', 'pruned-outcome'),
+      assistantMessage(second, 'assistant-2'),
+      toolMessage('call-2', 'second-outcome'),
+    ] as unknown as GenerateOptions['messages'],
+  }
+  const third = await collect(model, prunedRequest)
+  assert.equal(third.at(-1)?.type, 'finish')
+  assert.equal(delivered, false)
+  assert.equal(runtime.starts.length, 2)
+  const change = replayResponse(third)['generationChange'] as Record<string, unknown>
+  assert.equal(change['reason'], 'history-change')
+  const imported = inputText(runtime.sessions[1]?.inputs[0] as NativeUserInput)
+  assert.equal(imported.includes('pruned-outcome'), true)
+  assert.equal(imported.includes('long-original-outcome'), false)
+  assert.equal(imported.includes('second-outcome'), true)
+  assert.equal(imported.includes('no live tool calls'), true)
+  // The same pruned history continues on the new generation.
+  const fourth = await collect(model, {
+    ...firstRequest,
+    messages: [
+      ...prunedRequest.messages,
+      assistantMessage(third, 'assistant-3'),
+      { role: 'user', content: [{ type: 'text', text: 'go on' }] },
+    ] as unknown as GenerateOptions['messages'],
+  })
+  assert.equal(fourth.at(-1)?.type, 'finish')
+  assert.equal(runtime.starts.length, 2)
 })
 
 test('the assistant id binds once and a changed publication is refused', async () => {
@@ -250,18 +381,20 @@ test('the assistant id binds once and a changed publication is refused', async (
   })
   const second = await collect(model, continueRequest('session-1', 'hello', first, 'next'))
   assert.equal(second.at(-1)?.type, 'finish')
+  assert.equal(runtime.starts.length, 1)
+  assert.deepEqual(runtime.inputs.map(inputText), ['hello', 'next'])
+  // A bound assistant id that changes later is an earlier-prefix change. It
+  // starts one recorded new generation.
+  runtime.enqueue(textTurn('recovered', 'm3'))
   const moved = continueRequest('session-1', 'hello', first, 'next')
   const assistant = moved.messages[1]
   if (assistant?.role === 'assistant') {
     moved.messages[1] = { ...assistant, id: 'assistant-2' } as typeof assistant
   }
-  await assert.rejects(collect(model, moved), (error: unknown) => {
-    assert.ok(error instanceof LlmError)
-    assert.equal(error.code, 'REBASE_REQUIRED')
-    return true
-  })
-  assert.equal(runtime.starts.length, 1)
-  assert.deepEqual(runtime.inputs.map(inputText), ['hello', 'next'])
+  const third = await collect(model, moved)
+  assert.equal(third.at(-1)?.type, 'finish')
+  assert.equal(runtime.starts.length, 2)
+  assert.equal((replayResponse(third)['generationChange'] as Record<string, unknown>)['reason'], 'history-change')
 })
 
 test('missing or changed replay data is refused', async () => {

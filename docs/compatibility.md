@@ -290,7 +290,9 @@ not start the Claude binary and they do not measure a context window. After the
 session-cleanup work the suite had 146 tests. After the auxiliary-release work
 the suite had 150 tests. After the model-metadata work the suite had 152 tests.
 After the issue #13 smoke fixes the suite had 168 tests. After the image-budget
-work the suite has 175 tests. A separate direct-SDK many-image probe on
+work the suite had 175 tests. After the history-change work on 2026-11-11 the
+suite had 195 tests. After the context-window and import-bound work the suite
+has 200 tests and `pack:check` accepted 65 files with a temporary npm cache. A separate direct-SDK many-image probe on
 2026-11-11 is a live check; its summary is under `docs/evidence/`. The packed
 file list has 63 files. The `npm pack --dry-run` check on 2026-11-11 used a
 temporary npm cache, because the default npm cache in this environment has

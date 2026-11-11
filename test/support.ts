@@ -100,6 +100,7 @@ export function makeAdapter(input: {
   readonly deadlines?: Deadlines
   readonly configuration?: { current(): number }
   readonly catalog?: readonly DiscoveredModel[]
+  readonly discoverContextWindow?: (model: string) => Promise<number | undefined>
   readonly authOptions?: AuthGuardOptions
 }): {
   readonly model: ClaudeCodeAdapter
@@ -132,6 +133,7 @@ export function makeAdapter(input: {
     settingsFiles: () => settingsFiles,
     ...(input.configuration === undefined ? {} : { configuration: input.configuration }),
     ...(input.catalog === undefined ? {} : { catalog: input.catalog }),
+    ...(input.discoverContextWindow === undefined ? {} : { discoverContextWindow: input.discoverContextWindow }),
   })
   return { model, sessions, runner, home, workspace }
 }

@@ -1,0 +1,103 @@
+{
+  "measurement_date": "2026-11-11",
+  "transport": "official Agent SDK 0.3.322 streaming input; Claude Code CLI 2.1.319",
+  "probe": {
+    "purpose": "Read the context window that the CLI reports for each model of the model list, with no model request.",
+    "script": "scripts/probe-context-window.mjs",
+    "method": [
+      "Read the model list with supportedModels().",
+      "For each model, start one SDK query with that model and no user prompt.",
+      "Call getContextUsage({ detail: 'summary' }) and read maxTokens and rawMaxTokens. The reader uses the smaller valid value.",
+      "Close the query."
+    ],
+    "environment": "The first-party child environment of the plugin with DISABLE_COMPACT=1 and settings autoCompactEnabled false, precomputeCompactionEnabled false, idleCompaction false.",
+    "user_prompts_sent": 0,
+    "no_direct_http": true,
+    "no_credential_read": true,
+    "no_client_identity_change": true
+  },
+  "results": [
+    {
+      "requested": "default",
+      "displayName": "Default (recommended)",
+      "contextWindow": 1000000
+    },
+    {
+      "requested": "opus",
+      "displayName": "Opus 5.5",
+      "contextWindow": 1000000
+    },
+    {
+      "requested": "claude-fable-5-2",
+      "displayName": "Fable 5.2",
+      "contextWindow": 1000000
+    },
+    {
+      "requested": "sonnet",
+      "displayName": "Sonnet 5.5",
+      "contextWindow": 1000000
+    },
+    {
+      "requested": "haiku",
+      "displayName": "Haiku 5.5",
+      "contextWindow": 1000000
+    },
+    {
+      "requested": "fable",
+      "displayName": "Fable 5.1",
+      "contextWindow": 1000000
+    },
+    {
+      "requested": "claude-haiku-4-5-20251001",
+      "displayName": "Haiku 4.5",
+      "contextWindow": 200000
+    },
+    {
+      "requested": "claude-sonnet-5",
+      "displayName": "Sonnet 5",
+      "contextWindow": 1000000
+    },
+    {
+      "requested": "claude-opus-5",
+      "displayName": "Opus 5",
+      "contextWindow": 1000000
+    },
+    {
+      "requested": "claude-fable-5",
+      "displayName": "Fable 5",
+      "contextWindow": 1000000
+    },
+    {
+      "requested": "claude-opus-4-8",
+      "displayName": "Opus 4.8",
+      "contextWindow": 1000000
+    },
+    {
+      "requested": "claude-opus-4-7",
+      "displayName": "Opus 4.7",
+      "contextWindow": 1000000
+    },
+    {
+      "requested": "claude-opus-4-6",
+      "displayName": "Opus 4.6",
+      "contextWindow": 200000
+    },
+    {
+      "requested": "claude-sonnet-4-6",
+      "displayName": "Sonnet 4.6",
+      "contextWindow": 200000
+    }
+  ],
+  "observations": [
+    "maxTokens and rawMaxTokens were equal for each model in a separate run of the same controls.",
+    "The alias sonnet reported model claude-sonnet-5-5 in a separate run of the same controls.",
+    "One read with the model as a query option took about 0.25 seconds.",
+    "A setModel control request for an explicit model id took 0.7 to 2.2 seconds. The reader does not call setModel."
+  ],
+  "limits": [
+    "The value is the window that the CLI states. It is not a provider acceptance test at that size.",
+    "No network capture recorded the probe. The statement that the summary report sends no model request comes from the SDK declaration text and from the absent user prompt.",
+    "The values apply to this account, this plan, and this CLI version.",
+    "The probe did not run inside dsh. The dsh token meter and the dsh threshold with these values are not measured."
+  ]
+}

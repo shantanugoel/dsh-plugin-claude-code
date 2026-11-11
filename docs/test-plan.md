@@ -89,10 +89,10 @@ result delivery, opened session, close request, and remaining child handle.
 | O13 | Partial and completed SDK events repeat the same block | One dsh block and one replay block in the correct order |
 | O14 | Malformed tool arguments or truncated tool output | No tool dispatch; invalidate generation |
 | O15 | Schema keyword loss, tool-name collision, or unsupported content | `UNSUPPORTED_INPUT` before dispatch or result release |
-| O16 | Earlier message content, identity, or order changes | `REBASE_REQUIRED` before continuation |
+| O16 | Earlier message content, identity, or order changes | One new generation with reason `history-change` and the current request as the import; no `REBASE_REQUIRED`; the next request continues the new generation |
 | O17 | New dsh assistant ID after finish | Bind once only when the expected publication matches |
 | O18 | Missing or changed replay state | `REPLAY_STATE_INVALID`; no silent thinking removal |
-| O19 | Prompt, tools, model, reasoning control, or workspace changes on a live generation | One new generation with the current configuration and a recorded `configuration-change`; an earlier-prefix edit still returns `REBASE_REQUIRED` |
+| O19 | Prompt, tools, model, reasoning control, or workspace changes on a live generation | One new generation with the current configuration and a recorded `configuration-change`; an earlier-prefix edit starts a recorded `history-change` |
 | O20 | User message after a tool-result batch, or a developer/system message at that boundary | Deliver the user message inside the same native turn before the result release; refuse the developer or system message |
 | O21 | Two sessions in different workspaces | Separate processes, prompts, maps, and results |
 | O22 | Title or summary call during a parked tool | Separate auxiliary session; original call stays parked |
@@ -134,8 +134,8 @@ result delivery, opened session, close request, and remaining child handle.
 | O58 | Plan-mode prompt section on then off | Each change starts one new generation with the new prompt and reason `configuration-change`; the same dsh session continues; the next request uses the new session |
 | O59 | Tool addition then tool removal | New generation each time with the complete current tool list and `changedFields` equal `['tools']`; the new generation releases a tool result through its own bridge |
 | O60 | Model, effort, output cap, or workspace change | One new generation with the new value and `changedFields` in stable order; no `REBASE_REQUIRED`; a prompt change during a tool wait imports the completed outcome |
-| O61 | A configuration change with an earlier-prefix edit or an exact repeat | Refuse before any new native start; keep the edit and repeat rules |
-| O62 | `resolveModel` before a measurement, then after a scripted result `modelUsage` event, then for a different model | The documented 200000 fallback first; the measured `contextWindow` after; the other model keeps the fallback; no `defaultMaxTokens` |
+| O61 | A configuration change with an earlier-prefix edit; an exact repeat | The edit starts one new generation with reason `history-change`, the new configuration, and the changed fields; the exact repeat is refused before any new native start |
+| O62 | `resolveModel` with no CLI window read, before a measurement, then after a scripted result `modelUsage` event, then for a different model | The documented 200000 fallback first; the measured `contextWindow` after; the other model keeps the fallback; no `defaultMaxTokens` |
 | O63 | The real dsh LLM service resolves the route before and after a measurement; a model switch on a live generation | The service accepts `context.contextWindow`; the switch request returns `REBASE_REQUIRED` and the original native generation still serves the next turn |
 | O64 | A `compaction` auxiliary call with system, user, assistant thinking, tool-call, tool-result, and image history | One fresh native session; flat text rows; no thinking text, signature, tool-call ID, or image bytes; instruction last; no dsh tools; `maxTokens` maps to the output cap; the live conversation session is untouched |
 | O65 | A conversation turn after a compaction auxiliary call | The original native session takes the next turn; no second native start |
@@ -173,6 +173,13 @@ result delivery, opened session, close request, and remaining child handle.
 | O96 | A live tool turn through the plugin in an isolated dsh headless profile | Every turn stores a complete request record and `retentionAudit: "accepted"`; the tool list holds the 23 dsh MCP tools plus the recorded inert placeholder; an image-bearing request reports `unavailable` |
 | O97 | A tool handler for the next turn arrives before dsh publishes that turn's call ids, after the previous batch was released | The bridge parks the handler; the next `stage()` delivers its result to the exact call id; the turn completes with every tool call |
 | O98 | A tool handler has an id outside the published call list | The bridge refuses it with `TOOL_RESULT_MISMATCH` when `expect()` publishes the turn's ids; no handler waits for the result deadline |
+| O99 | dsh replaces an earlier tool result with a shorter copy while a later tool batch waits | One new generation with reason `history-change`; the import holds the shorter outcome and the completed later outcome, not the original text; the old tool wait is cancelled; the next request continues the new generation |
+| O100 | A changed first message in a request with no assistant message, on a live generation | One new generation with reason `history-change`; the last message is the current input and each earlier message is history |
+| O101 | A bound assistant id that changes in a later request | One new generation with reason `history-change` |
+| O102 | `resolveModel` with a CLI window read for an alias, an older model, a model with no reported window, and a failed read; then a result `modelUsage` event | The read value for the alias and the older model; the 200000 fallback for the other two; the result measurement replaces the read value and needs no new read; no `defaultMaxTokens` |
+| O103 | The window reader: two reads of one model, different models together, a failed read, and a read after the retry interval | One CLI read for each model; one read at a time; a kept value needs no new read; a failure is tried again only after 30 seconds |
+| O104 | A result message with two `modelUsage` entries for an alias request | The served model id of the initialization message selects the entry; without it the entries are not attributed; the requested id and a canonical id also select an entry |
+| O105 | An import history longer than the limit | The text keeps the first message and the latest messages; one mark with the omitted count is between them; a short history has no mark |
 
 Rows O97 and O98 are offline unit tests in `test/mcp-bridge.test.ts`. They
 reproduce a live defect that failed every tool call after the first tool call of

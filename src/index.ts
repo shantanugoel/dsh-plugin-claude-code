@@ -6,7 +6,7 @@ import { ClaudeCodeAdapter } from './adapter.js'
 import { AuthGuard, ProcessHome } from './auth.js'
 import { createProcessAuthRunner } from './auth-process.js'
 import { blockedRouteDescriptor } from './catalog.js'
-import { officialModelDiscovery } from './model-discovery.js'
+import { officialContextWindows, officialModelDiscovery } from './model-discovery.js'
 import { SessionForkOrigin, SessionHeaderWorkspace } from './context.js'
 import { DEFAULT_DEADLINES } from './deadlines.js'
 import type { ImageAttachmentReader } from './images.js'
@@ -47,6 +47,7 @@ export function apply(ctx: Context, _config: PluginConfig): void {
     deadlines: DEFAULT_DEADLINES,
     attachments: () => imageAttachmentReader(ctx),
     discoverModels: () => officialModelDiscovery.list(),
+    discoverContextWindow: (model) => officialContextWindows.read(model),
   })
   ctx.llm.registerAdapter([CLAUDE_CODE_SESSION_ROUTE], adapter)
   ctx.llm.registerConfigurableProviders([blockedRouteDescriptor()])

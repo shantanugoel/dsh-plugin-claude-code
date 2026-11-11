@@ -86,6 +86,13 @@ pressure check needs `context.contextWindow` from the resolved model. Its
 scripted runtime. The real model values, the static fallback, and the dsh token
 meter remain unverified in a live dsh profile.
 
+On 2026-11-11 a no-prompt SDK probe read the context window that the CLI states
+for each model of the model list. Eleven models reported 1000000 tokens. Three
+models reported 200000 tokens. The alias `sonnet` reported 1000000 tokens. A
+desktop session with `sonnet` on the same day used the 200000 fallback for all
+its turns, so dsh started its pressure work at 134464 tokens. See [the
+context-window probe summary](evidence/context-window-probe-2026-11-11.json).
+
 On 2026-11-11 a third direct SDK probe measured a trailing user message after a
 parked tool result. With the trailing message queued before the result release,
 the CLI sent it in the same native request as a CLI-generated system-role
@@ -351,13 +358,16 @@ flag on each occurrence.
 Map a dsh `maxTokens` control to the official `CLAUDE_CODE_MAX_OUTPUT_TOKENS`
 environment control for the new native session. The value stays fixed for that
 generation, as the model and effort do. A change requires a new generation.
-Report a context window with `resolveModel`. The first value is a static
-fallback of 200000 tokens. This value is not measured. Each native result
-message reports `modelUsage`. The adapter records that entry in a process-wide
-cache, keyed by the requested model id. Later `resolveModel` calls use the
-measured `contextWindow`. The result message arrives after the turn's last
-assistant message, so the fallback can stay in use until a later request reads
-the event. Do not report `defaultMaxTokens`: the compaction reservation uses the
+Report a context window with `resolveModel`. Each native result message reports
+`modelUsage`. The adapter records that entry in a process-wide cache, keyed by
+the requested model id. The requested id can be an alias, so an entry also
+agrees when its key or canonical id is the served model id of the
+initialization message. The result message arrives after the turn's last
+assistant message, so a first request has no such measurement. Before a
+measurement, `resolveModel` reads the window that the CLI states for the model.
+It starts one SDK query with that model and no user prompt, reads the summary
+context report, and closes the query. A failed read uses a static fallback of
+200000 tokens. That fallback is not measured. Do not report `defaultMaxTokens`: the compaction reservation uses the
 request `maxTokens`, or zero when the request has no cap. A materialized default
 output cap would shrink the message budget with no measured benefit. See
 decision D20.
@@ -442,13 +452,13 @@ continues earlier conversation, recover the session automatically:
    releases no old MCP handler.
 5. Store a `generationChange` record in the replay data of the successful turn.
    The record holds the reason (`abort`, `timeout`, `process-loss`, `restore`,
-   `fork`, `configuration-change`, `image-budget`, or `invalid`), the replaced
+   `fork`, `configuration-change`, `image-budget`, `history-change`, or
+   `invalid`), the replaced
    generation and CLI session ids when known, the imported message count, the
    imported prefix hash, and the timestamp. The dsh log keeps this record.
 6. A configuration change also records the changed fields in a stable order:
    model, effort, output cap, workspace, system prompt, and tools. The new
-   native session receives the new values. An earlier-prefix edit still returns
-   `REBASE_REQUIRED` before any new generation starts.
+   native session receives the new values.
 7. An image-budget change records reason `image-budget` with no changed fields.
    It does not change the configuration. The adapter starts it when the next
    native turn would put the live generation above its conservative retained
@@ -458,13 +468,25 @@ continues earlier conversation, recover the session automatically:
    A tool-result image becomes a placeholder and does not reach the new
    generation.
 
+8. A history change records reason `history-change`. The adapter starts it when
+   the request prefix does not agree with the committed prefix of the healthy
+   live generation. Causes are a dsh tool-result prune, a compaction
+   replacement, and an edit to an earlier message. The live native session
+   cannot change its prefix, and the user cannot repair this condition. The
+   adapter closes the old generation and imports the current dsh request. If
+   the configuration also changed, the record holds the changed fields. For a
+   tool-result continuation, the completed outcomes are quoted in the import and
+   the old tool wait is cancelled. If the request has no assistant message and
+   no recorded boundary agrees, the last message is the current input and each
+   earlier message is history.
+
 The compaction service records the replacement surface. The adapter only
 produces the summary text, as a recorded textual import (see section 5). The next
-request after the replacement surface must use a recorded new generation. If none
-exists, the adapter returns `REBASE_REQUIRED` and keeps the old generation
-intact. Ordinary partial compaction, which keeps a signed recent tail after
-changing its prefix, must return `REBASE_REQUIRED`. Do not flatten the frozen
-transcript inside the adapter for a live turn.
+request after the replacement surface starts a recorded `history-change`
+generation. Ordinary partial compaction, which changes the prefix and keeps a
+recent tail, also starts a recorded `history-change` generation. The new
+generation does not receive the old signed tail. Do not send an old signature
+after an earlier input changed.
 
 A model change continues with a recorded configuration change (step 6). The
 switch check can price the proposed model because `resolveModel` reports a

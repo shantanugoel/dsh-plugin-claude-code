@@ -9,6 +9,7 @@ export const GENERATION_CHANGE_REASONS = [
   'fork',
   'configuration-change',
   'image-budget',
+  'history-change',
   'invalid',
 ] as const
 

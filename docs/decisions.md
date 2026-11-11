@@ -745,3 +745,129 @@ Offline rows O97 and O98 and `test/mcp-bridge.test.ts`. The live reproduction
 and the fixed reruns used the standard preset with the `bash` tool. The desktop
 defect used the `ptc` preset with `run_code`. Both paths use one MCP bridge and
 one handler for each tool call.
+
+## D35. Recover a changed earlier prefix with a recorded new generation
+
+A desktop dsh session on 2026-11-11 stopped with `REBASE_REQUIRED` in turn 6.
+Each later request failed with the same code, so the user could not continue the
+session.
+
+Measured cause, from the dsh session log:
+
+- The last successful step reported 133906 cache-read tokens, 2621 cache-write
+  tokens, and 4 input tokens. The total is 136531 tokens.
+- The plugin reported a 200000-token context window and no `defaultMaxTokens`.
+  The request header had no `maxTokens`.
+- The dsh `compaction-basic` plugin sets its threshold to the smaller of 80% of
+  the window and the window minus the reserved completion tokens minus
+  `headroomTokens`. The default headroom is 65536. The threshold was 134464
+  tokens.
+- dsh then wrote nine `compaction/prune` events. Each event replaced one
+  earlier tool result with a shorter copy. The events removed an estimated
+  41607 tokens.
+- The next request had a different earlier prefix. `admitTranscript` returned
+  `REBASE_REQUIRED`. The adapter kept the live generation and its committed
+  prefix, so each later request failed the same comparison.
+
+Decision: a request prefix that does not agree with the committed prefix of a
+healthy live generation starts one new generation. The adapter closes the old
+generation and sends the recorded text import of the current request. The record
+has reason `history-change`. It holds the changed fields when the configuration
+changed in the same request. When a recovery request has no assistant message
+and no recorded boundary agrees, the last message is the current input.
+
+Reason: the user cannot repair a prune, a compaction replacement, or an edit
+from the error message. The live native session cannot change its prefix.
+Native compaction is off, so the dsh pressure policy is the only control of the
+native context size. A prune has an effect on the native session only through a
+new generation. The import is plain text. It sends no old signature, so a saved
+signature is not used after an earlier input changed.
+
+Cost: the new native session does not use the prompt cache of the old session,
+and it does not keep the old signed thinking. This occurs one time for each dsh
+pressure event, not one time for each step.
+
+Checked and not changed:
+
+- The threshold. The plugin reports no reserved completion tokens, so it cannot
+  decrease the reservation. `headroomTokens` and `modelPolicies` are dsh
+  profile settings. A larger reported context window would be a false value.
+- The pruner. The dsh presets mount `dsh-compaction-tool-result-pruner` with
+  character limits only. No setting for one provider was found in the preset.
+  The pruner package was not available for inspection.
+- `REPLAY_STATE_INVALID` for a changed last assistant publication. That rule
+  is unchanged.
+- `recordContextImport` still returns `REBASE_REQUIRED` for an open tool
+  boundary. No production path calls it.
+
+The bounded import omitted the latest messages when the history was longer than
+its limit. D36 changes that rule.
+
+Evidence: offline rows O16, O61, and O99 to O101. The measured values come from
+the private dsh session log. That log is not in Git. No live prune was measured
+after the change.
+
+## D36. Keep the first message and the latest messages in a long import
+
+Decision: when the quoted messages of an import are longer than 120000
+characters, keep the first message, then keep the latest messages that fit. Put
+one mark with the number of omitted messages between them. The limit, the
+per-block limits, and the deterministic result do not change.
+
+Reason: the earlier rule kept the oldest messages and omitted the latest ones.
+The latest messages hold the current work. The first message holds the task, or
+the summary after a dsh compaction. With D35, a recovery import can occur in a
+long session without a user action, so the earlier rule removed the context
+that the model needs most.
+
+Evidence: offline row O105. No live session measured the effect of the limit.
+The limit is 120000 characters for each model. It does not use the context
+window.
+
+## D37. Read the context window from the CLI before a result measurement
+
+Measured on 2026-11-11: a desktop session with the alias `sonnet` used the
+200000 fallback for all its turns. dsh started its pressure work at 134464
+tokens (D35). A no-prompt SDK probe on the same day read 1000000 tokens for
+`sonnet`, which the CLI resolves to `claude-sonnet-5-5`. Eleven models of the
+model list reported 1000000 tokens and three reported 200000 tokens.
+
+The cause of the missing result measurement in that session was not
+determined. The session log has no result message. A possible cause is in
+`modelUsageEvent`: it attributed an entry only when its key or canonical id was
+the requested id, or when the result had one entry. An alias request with two
+entries had no attributed entry.
+
+Decision:
+
+- `resolveModel` reads the window from the CLI when no result measurement
+  exists. It starts one SDK query with the model and no user prompt, calls
+  `getContextUsage({ detail: 'summary' })`, uses the smaller valid value of
+  `maxTokens` and `rawMaxTokens`, and closes the query. The reader keeps a
+  successful value for the process lifetime, tries a failed read again after 30
+  seconds, and runs one read at a time.
+- A result measurement stays first in the order. The static 200000 fallback
+  stays last.
+- `modelUsageEvent` also accepts an entry whose key or canonical id is the
+  served model id of the initialization message.
+- The reader does not call `setModel`. A `setModel` control request for an
+  explicit model id took 0.7 to 2.2 seconds in the probe, and this project has
+  no measurement of the requests that it sends. A read with the model as a
+  query option took about 0.25 seconds.
+
+Reason: the fallback was a false value for most models of this account. A
+window that is too small starts the dsh pressure work early, and each pressure
+event starts a new native session (D35). The SDK `ModelInfo` type has no
+window field, so the model list cannot supply the value.
+
+Effect: with the default dsh policy, a 1000000-token window has a pressure
+threshold of 800000 tokens. A session can become much larger before dsh
+compacts it. Each request of a large session uses more of the plan limit. The
+dsh `thresholdRatio` and `modelPolicies` settings control this.
+
+Limits: the value is the window that the CLI states. It is not a provider
+acceptance test at that size. No network capture recorded the probe. The
+values were not measured inside dsh.
+
+Evidence: [context-window-probe-2026-11-11.json](evidence/context-window-probe-2026-11-11.json)
+and offline rows O102 to O104.

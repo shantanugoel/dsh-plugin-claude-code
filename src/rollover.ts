@@ -15,8 +15,10 @@ import {
 } from './transcript.js'
 
 /**
- * Upper bound of one bounded import text. The imported history is a recorded
- * summary for a new generation. The dsh log keeps the complete original events.
+ * Upper bound of the quoted messages in one import text. The imported history
+ * is a recorded summary for a new generation. A longer history keeps its first
+ * message and its latest messages. The dsh log keeps the complete original
+ * events.
  */
 export const IMPORT_MAX_CHARS = 120_000
 
@@ -68,6 +70,7 @@ export interface RolloverPlan {
  *    message is a completed tool outcome and is quoted in the import.
  * 3. Without an assistant message, the last dispatched request or the
  *    committed prefix of the replaced generation is the history boundary.
+ *    If neither matches, the last message is the current input.
  *
  * The caller sends `importedText` plus `pendingUserContent` as one user turn.
  * The function does not read image bytes and does not include a signature.
@@ -165,14 +168,11 @@ function splitBoundary(
       'The recovery request has no assistant history and no replaced generation.',
     )
   }
+  // When the earlier prefix changed, no recorded boundary matches. The last
+  // message is then the current input, and each earlier message is history.
   const boundary = matchingPrefixLength(projected, replaced.dispatchedMessages)
     ?? matchingPrefixLength(projected, replaced.committed)
-  if (boundary === undefined) {
-    throw pluginFailure(
-      'REBASE_REQUIRED',
-      'Earlier message content, identity, or order changed. This recovery cannot import the prefix.',
-    )
-  }
+    ?? projected.length - 1
   const importedMessages = projected.slice(0, boundary).filter((message) => message.role !== 'system')
   const pending = projected.slice(boundary)
   if (pending.length === 0) {
@@ -268,19 +268,30 @@ export function historicalImportText(input: {
     'There are no live tool calls. Each tool outcome below is complete. This text does not show tool call ids.',
     'Each image below is a placeholder with its attachment id. The image bytes are not in this text.',
   ]
-  let budget = IMPORT_MAX_CHARS
   const outcomes = completedOutcomeIds(input.imported)
-  for (const [index, message] of input.imported.entries()) {
-    const section = renderMessage(message, outcomes)
-    if (section === '') continue
-    if (section.length > budget) {
-      lines.push(`[... ${input.imported.length - index} later messages omitted from this bounded import ...]`)
-      budget = 0
-      break
-    }
-    lines.push(section)
+  const sections = input.imported
+    .map((message) => renderMessage(message, outcomes))
+    .filter((section) => section !== '')
+  // A long history keeps its first message and its latest messages. The first
+  // message is the task or a compaction summary. The latest messages are the
+  // current work. The messages between them are omitted with one mark.
+  let budget = IMPORT_MAX_CHARS
+  const head = sections[0]
+  const keepHead = head !== undefined && head.length <= budget
+  if (keepHead) budget -= head.length + 1
+  let tailStart = sections.length
+  while (tailStart > 1) {
+    const section = sections[tailStart - 1]
+    if (section === undefined || section.length > budget) break
     budget -= section.length + 1
+    tailStart -= 1
   }
+  if (keepHead && head !== undefined) lines.push(head)
+  const omitted = tailStart - (keepHead ? 1 : 0)
+  if (omitted > 0) {
+    lines.push(`[... ${omitted} earlier messages omitted from this bounded import ...]`)
+  }
+  for (const section of sections.slice(Math.max(tailStart, 1))) lines.push(section)
   if (input.hasPendingUserContent) {
     lines.push('## Current request')
     lines.push('The current dsh user input follows after this text.')

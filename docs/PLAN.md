@@ -232,7 +232,8 @@ outcomes. A complete synthetic dsh loop performs two steps on one fake session.
 - [x] Recover a fixed-configuration change with one new generation: new prompt,
   tools, model, effort, output cap, or workspace, the recorded textual import,
   and `generationChange` reason `configuration-change` with the changed fields.
-  Keep `REBASE_REQUIRED` for an earlier-prefix edit.
+  An earlier-prefix change now starts a recorded `history-change` generation
+  (M14).
 - [x] Add offline tests O58 to O61: plan-mode prompt change on and off, tool
   addition and removal, and model, effort, output-cap, and workspace changes.
 - [x] Find the supported dsh session replacement, compaction, and flush APIs.
@@ -503,3 +504,43 @@ measured.
 Completion: the resolved model name matches the discovered catalog name, an
 uncatalogued id keeps its raw name, and no default effort appears without a
 measured value.
+
+## M14. Recover a changed earlier prefix automatically
+
+Status on 2026-11-11: offline work is complete. No live prune or compaction was
+measured through an installed dsh profile.
+
+- [x] Find the cause of the `REBASE_REQUIRED` failure in a desktop session: a
+  dsh tool-result prune under context pressure (D35).
+- [x] Start one new generation with reason `history-change` when the request
+  prefix does not agree with the live generation.
+- [x] Use the last message as the current input when a recovery request has no
+  assistant message and no recorded boundary agrees.
+- [x] Check the dsh pressure threshold and the pruner configuration. The plugin
+  cannot change them. Record the profile setting in the README.
+- [x] Add offline tests O99 to O101 and update O16, O19, and O61.
+- [ ] Measure a prune and an automatic compaction through an installed dsh
+  profile.
+- [x] Keep the first message and the latest messages in a long import (D36).
+
+Completion: a changed earlier prefix does not stop the dsh session. The user
+does not see `REBASE_REQUIRED` for this condition.
+
+## M15. Report the CLI context window
+
+Status on 2026-11-11: offline work is complete. A no-prompt live probe read the
+values from the CLI. No value was measured inside dsh.
+
+- [x] Measure the window that the CLI states for each model with no model
+  request (D37).
+- [x] Read that window in `resolveModel` before a result measurement. Keep the
+  200000 fallback for a failed read.
+- [x] Accept a result `modelUsage` entry through the served model id.
+- [x] Add offline tests O102 to O104 and the probe script
+  `scripts/probe-context-window.mjs`.
+- [ ] Find why the desktop session recorded no result measurement.
+- [ ] Measure the dsh token meter and the pressure threshold with a
+  1000000-token window in an installed dsh profile.
+
+Completion: a first request of a model uses the window that the CLI states, not
+the 200000 fallback.

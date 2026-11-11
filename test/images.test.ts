@@ -304,9 +304,10 @@ test('a later user image is sent on the same native session', async () => {
   if (imageBlock?.type === 'image') assert.equal(imageBlock.data, BASE64_PNG)
 })
 
-test('a changed earlier image requires a new generation', async () => {
+test('a changed earlier image starts one recorded new generation', async () => {
   const runtime = new ScriptedNativeRuntime()
   runtime.enqueue(textTurn('first'))
+  runtime.enqueue(textTurn('recovered', 'm2'))
   const attachments = new FakeImageAttachments()
   const firstImage = syntheticImage('sha256:6666666666666666666666666666666666666666666666666666666666666666')
   const otherImage = syntheticImage('sha256:7777777777777777777777777777777777777777777777777777777777777777')
@@ -328,13 +329,16 @@ test('a changed earlier image requires a new generation', async () => {
       { role: 'user', content: [{ type: 'text', text: 'next' }] },
     ] as GenerateOptions['messages'],
   }
-  await assert.rejects(collect(model, changed), (error: unknown) => {
-    assert.ok(error instanceof LlmError)
-    assert.equal(error.code, 'REBASE_REQUIRED')
-    return true
-  })
-  assert.equal(runtime.starts.length, 1)
+  const second = await collect(model, changed)
+  assert.equal(second.at(-1)?.type, 'finish')
+  assert.equal(runtime.starts.length, 2)
   assert.equal(runtime.sessions[0]?.inputs.length, 1)
+  // The import holds the changed image as a placeholder, not as image bytes.
+  const content = runtime.sessions[1]?.inputs[0]?.content ?? []
+  assert.equal(content.some((block) => block.type === 'image'), false)
+  const imported = content[0]?.type === 'text' ? content[0].text : ''
+  assert.equal(imported.includes(String(otherImage.attachmentId)), true)
+  assert.equal(imported.includes(String(firstImage.attachmentId)), false)
 })
 
 test('the image target and pricing describe the exact request bytes', async () => {

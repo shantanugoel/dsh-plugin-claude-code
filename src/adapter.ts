@@ -15,11 +15,11 @@ import {
 
 import type { AuthGuard, HomeSource } from './auth.js'
 import { canonicalJson, contentHash } from './canonical.js'
-import { contextWindowFor, recordMeasuredModelUsage } from './capacity.js'
+import { contextWindowFor, measuredModelCapacity, recordMeasuredModelUsage } from './capacity.js'
 import { requireAbsoluteWorkspace, type SessionOriginSource, type WorkspaceSource } from './context.js'
 import { withDeadline, type Deadlines } from './deadlines.js'
 import { claudeEffort, reasoningFor, type ClaudeEffort } from './effort.js'
-import { pluginFailure } from './errors.js'
+import { isPluginFailure, pluginFailure } from './errors.js'
 import {
   addImageContentStats,
   claudeImageRequestPricing,
@@ -72,6 +72,8 @@ export interface AdapterDependencies {
   readonly configuration?: { current(): number }
   readonly catalog?: readonly DiscoveredModel[]
   readonly discoverModels?: () => Promise<readonly DiscoveredModel[]>
+  /** Context window that the CLI reports for one model, without a model request. */
+  readonly discoverContextWindow?: (model: string) => Promise<number | undefined>
 }
 
 const SUPPORTED_ROLES = new Set(['system', 'user', 'assistant', 'tool'])
@@ -143,7 +145,12 @@ export class ClaudeCodeAdapter extends LlmAdapter {
     if (model.trim() === '') {
       return Promise.reject(pluginFailure('UNSUPPORTED_INPUT', 'The model id is empty.'))
     }
-    return this.modelRow(model).then((row) => {
+    return this.modelRow(model).then(async (row) => {
+      // A result-message measurement needs no CLI read. Without one, ask the
+      // CLI for the window of this model. A failed read keeps the fallback.
+      const discovered = measuredModelCapacity(model) === undefined
+        ? await this.dependencies.discoverContextWindow?.(model).catch(() => undefined)
+        : undefined
       if (signal?.aborted === true) {
         throw new DOMException('The model request was aborted.', 'AbortError')
       }
@@ -153,7 +160,7 @@ export class ClaudeCodeAdapter extends LlmAdapter {
         id: model,
         name: resolvedModelName(model, row),
         inputModalities: ['text', 'image'],
-        context: { contextWindow: contextWindowFor(model) },
+        context: { contextWindow: contextWindowFor(model, discovered) },
         ...(reasoning === undefined ? {} : { reasoning }),
       }
     })
@@ -408,16 +415,36 @@ export class ClaudeCodeAdapter extends LlmAdapter {
     toolsCanonical: string,
     effort: ClaudeEffort | undefined,
   ): AsyncIterable<StreamChunk> {
-    const admission = admitTranscript({
-      messages: options.messages,
-      waitingForResults: live.phase === 'WAITING_FOR_RESULTS',
-      state: {
-        committed: live.committed,
-        pending: live.pending,
-        dispatchedHash: live.dispatchedHash,
-      },
-    })
     const changedFields = changedConfigurationFields(live, options, workspace, prompt, toolsCanonical, effort)
+    let admission: Admission
+    try {
+      admission = admitTranscript({
+        messages: options.messages,
+        waitingForResults: live.phase === 'WAITING_FOR_RESULTS',
+        state: {
+          committed: live.committed,
+          pending: live.pending,
+          dispatchedHash: live.dispatchedHash,
+        },
+      })
+    } catch (error) {
+      if (!isPluginFailure(error, 'REBASE_REQUIRED')) throw error
+      // dsh changed an earlier message: a tool-result prune, a compaction
+      // replacement, or an edit. The live native session cannot change its
+      // prefix, and the user cannot repair this condition. Start one recorded
+      // new generation from the current request. The old signed thinking is
+      // not sent.
+      yield* this.recoverGeneration(
+        options,
+        workspace,
+        sessionId,
+        live,
+        'history-change',
+        effort,
+        changedFields.length > 0 ? changedFields : undefined,
+      )
+      return
+    }
     if (changedFields.length > 0) {
       yield* this.recoverGeneration(
         options,
