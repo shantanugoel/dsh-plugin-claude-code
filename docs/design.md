@@ -100,6 +100,12 @@ An auxiliary call also stays open: it has its own key and its own stream close.
 Plugin unload closes every owned process. The session ID and the generation ID
 in the key prevent a wrong process close.
 
+An auxiliary stream always releases its key in its `finally` path. An entry that
+is already invalid needs no second close, because the invalidation closed its
+native process. The release only removes that entry. A release refuses a
+conversation generation. A later auxiliary call with the same purpose, output
+cap, and content starts a new native session.
+
 Before each continuation, compare the complete frozen request with the stored
 expected dsh transcript. Check the system text, ordered tools and schemas, exact
 model ID, controls, message content, message identity, and tool-call mapping.

@@ -521,3 +521,25 @@ Two accepted checks in one scope run one command. A changed home, workspace,
 settings file state, environment value, or interval runs the command again. A
 refusal runs the command again. This is an offline behavior. No live auth
 command was measured after this change.
+
+## D29. Release an auxiliary session key after its bounded close or invalidation
+
+Decision: release the auxiliary key in the `finally` path of `runAuxiliary` on
+every exit. An invalid entry was already closed by `invalidate()`, so the
+release only removes the entry. A valid entry closes through the bounded
+`closeKey` path first. Add `SessionManager.releaseAuxiliary(key)`. It refuses a
+conversation generation: it returns without a change when the entry is not
+auxiliary. Keep `conversation()` separate.
+
+Reason: the old `finally` skipped the close when the phase was `INVALID`. An
+aborted or failed title or summary call therefore left its entry in the session
+map. The memory grew with each aborted call, and a later call with the same key
+found a stale entry. The release is safe because the entry is keyed by the exact
+auxiliary request. A conversation generation must never be removed by this path,
+because a later turn would then hide or delete it.
+
+Evidence: offline rows O70 and O71 with the scripted native runtime. An aborted
+auxiliary call leaves no entry. The next auxiliary call with the same purpose,
+output cap, and content starts a new native session. A live conversation keeps
+its entry and process, and the next conversation request continues the same
+native session. No live Claude process was measured.

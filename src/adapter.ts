@@ -194,6 +194,11 @@ export class ClaudeCodeAdapter extends LlmAdapter {
     return this.dependencies.sessions.closeOwned()
   }
 
+  /** Number of native sessions this adapter owns. For diagnostics and tests. */
+  ownedSessionCount(): number {
+    return this.dependencies.sessions.size()
+  }
+
   /**
    * Close the conversation generation of one disposed dsh session.
    * A matching auxiliary call is not closed here. Its own stream closes it.
@@ -344,7 +349,11 @@ export class ClaudeCodeAdapter extends LlmAdapter {
       await this.invalidate(live, nativeFailureReasonOf(error) ?? 'invalid')
       throw error
     } finally {
-      if (live.phase !== 'INVALID') await this.dependencies.sessions.closeKey(key)
+      // The invalid path already closed the native process. Release the key
+      // either way, so an aborted or failed call cannot leave an entry that a
+      // later call with the same content finds. This path cannot remove a
+      // conversation generation.
+      await this.dependencies.sessions.releaseAuxiliary(key)
     }
   }
 

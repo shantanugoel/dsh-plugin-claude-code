@@ -24,6 +24,10 @@ caches one accepted auth check for 60 seconds. The offline suite has 146 tests
 after this change. The tests use the real dsh session store and a fake auth
 runner. No live Claude process or live auth command was measured.
 
+Status, 2026-11-11: M12 releases the auxiliary session key on every exit. The
+offline suite has 150 tests after this change. No live auxiliary call was
+measured.
+
 Status, 2026-11-11 (issue #1): the Git install distribution builds `dist/` at
 install time through the `prepare` script (D20). An isolated dsh profile
 installed the plugin from a local Git spec, and `--dump-config` listed the
@@ -375,3 +379,18 @@ live auth command was measured.
 Completion: one dsh session disposal releases exactly its native process, plugin
 unload releases every owned process, and one accepted auth check covers a short
 interval without a new command.
+
+## M12. Auxiliary session release
+
+Status on 2026-11-11: offline work is complete. No live auxiliary call was
+measured.
+
+- [x] Release the auxiliary key in the `finally` path after a bounded close or
+  an invalidation.
+- [x] Refuse a conversation generation in the release path.
+- [x] Keep `conversation()` separate from the auxiliary map.
+- [x] Add offline tests O70 and O71.
+- [ ] Measure an aborted auxiliary call through an installed dsh profile.
+
+Completion: every aborted or failed auxiliary call leaves no session entry, and
+a later call with the same content starts a new native session.

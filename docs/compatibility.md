@@ -252,7 +252,8 @@ with 76 tests. After the native-error work, which was merged after the rollover
 work, the suite had 117 tests. After the context-capacity and compaction-summary
 work the suite had 135 tests. The new tests use the scripted runtime. They do
 not start the Claude binary and they do not measure a context window. After the
-session-cleanup work the suite has 146 tests. The packed file list has 63 files.
+session-cleanup work the suite had 146 tests. After the auxiliary-release work
+the suite has 150 tests. The packed file list has 63 files.
 The `npm pack --dry-run` check on 2026-11-11 used a temporary npm cache, because
 the default npm cache in this environment has root-owned entries and `npm pack`
 cannot write to it. The package version is 0.2.0. No license is selected. The

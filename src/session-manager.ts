@@ -71,6 +71,22 @@ export class SessionManager {
   }
 
   /**
+   * Release one auxiliary key after its bounded close or invalidation.
+   * An entry that is already invalid needs no second close: invalidate()
+   * closed its native process. A conversation generation is never removed
+   * through this path.
+   */
+  async releaseAuxiliary(key: string): Promise<void> {
+    const session = this.live.get(key)
+    if (session === undefined || !session.auxiliary) return
+    if (session.phase === 'INVALID' || session.phase === 'CLOSED') {
+      this.live.delete(key)
+      return
+    }
+    await this.closeKey(key)
+  }
+
+  /**
    * Close every conversation generation of one disposed dsh session.
    * An auxiliary call stays open: it has its own key and its own close path.
    */

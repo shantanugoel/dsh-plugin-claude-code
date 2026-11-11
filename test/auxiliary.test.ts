@@ -41,6 +41,14 @@ async function collect(
   return chunks
 }
 
+async function waitFor(predicate: () => boolean, timeoutMs = 2000): Promise<void> {
+  const start = Date.now()
+  while (!predicate()) {
+    if (Date.now() - start > timeoutMs) throw new Error('The test condition did not become true.')
+    await new Promise((resolve) => setTimeout(resolve, 5))
+  }
+}
+
 function titleRequest(maxTokens = 64): GenerateOptions {
   return {
     ...textRequest('Name this session.', 'title-session'),
@@ -349,4 +357,104 @@ test('a title call still requires the spend check first', async () => {
     return true
   })
   assert.equal(runtime.starts.length, 0)
+})
+
+
+test('an aborted auxiliary call leaves no session entry', async () => {
+  const runtime = new ScriptedNativeRuntime()
+  runtime.enqueue({ events: [] })
+  const { model, sessions } = makeAdapter({ runtime, spendGate: gate() })
+  const controller = new AbortController()
+  const auxiliary = collect(model, { ...titleRequest(64), signal: controller.signal })
+  await waitFor(() => runtime.starts.length === 1)
+  await waitFor(() => sessions.size() === 1)
+  controller.abort()
+  const chunks = await auxiliary
+  const finish = chunks.at(-1)
+  assert.equal(finish?.type, 'finish')
+  if (finish?.type === 'finish') assert.equal(finish.reason.kind, 'aborted')
+  assert.equal(sessions.size(), 0)
+  assert.equal(model.ownedSessionCount(), 0)
+  assert.equal(runtime.sessions[0]?.isClosed(), true)
+})
+
+test('a later auxiliary call with the same content starts a new native session', async () => {
+  const runtime = new ScriptedNativeRuntime()
+  runtime.enqueue({ events: [] })
+  runtime.enqueue(textTurn('A title', 'm-title'))
+  const { model, sessions } = makeAdapter({ runtime, spendGate: gate() })
+  const controller = new AbortController()
+  const aborted = collect(model, { ...titleRequest(64), signal: controller.signal })
+  await waitFor(() => runtime.starts.length === 1)
+  await waitFor(() => sessions.size() === 1)
+  controller.abort()
+  await aborted
+  assert.equal(sessions.size(), 0)
+
+  const chunks = await collect(model, titleRequest(64))
+  assert.equal(chunks.at(-1)?.type, 'finish')
+  assert.equal(runtime.starts.length, 2)
+  assert.equal(sessions.size(), 0)
+})
+
+test('an aborted auxiliary call does not disturb the conversation session', async () => {
+  const runtime = new ScriptedNativeRuntime()
+  runtime.enqueue(textTurn('answer'))
+  runtime.enqueue({ events: [] })
+  runtime.enqueue(textTurn('again', 'm2'))
+  const { model, sessions } = makeAdapter({ runtime, spendGate: gate() })
+  const conversation: GenerateOptions = { ...textRequest('hello', 'live-aux'), system: 'System prompt.' }
+  const first = await collect(model, conversation)
+  assert.equal(first.at(-1)?.type, 'finish')
+  assert.equal(sessions.size(), 1)
+  assert.equal(sessions.conversation('live-aux') !== undefined, true)
+
+  const controller = new AbortController()
+  const auxiliary = collect(model, {
+    ...textRequest('Name this session.', 'live-aux'),
+    purpose: 'session-title' as never,
+    system: 'You write short session titles.',
+    maxTokens: 64,
+    signal: controller.signal,
+  })
+  await waitFor(() => sessions.size() === 2)
+  assert.equal(runtime.sessions[0]?.isClosed(), false)
+  controller.abort()
+  const auxiliaryChunks = await auxiliary
+  const auxiliaryFinish = auxiliaryChunks.at(-1)
+  if (auxiliaryFinish?.type === 'finish') assert.equal(auxiliaryFinish.reason.kind, 'aborted')
+  assert.equal(sessions.size(), 1)
+  assert.equal(sessions.conversation('live-aux') !== undefined, true)
+  assert.equal(runtime.sessions[0]?.isClosed(), false)
+
+  const continuation: GenerateOptions = {
+    ...conversation,
+    messages: [
+      ...conversation.messages,
+      assistantMessage(first),
+      { role: 'user', content: [{ type: 'text', text: 'again' }] },
+    ] as GenerateOptions['messages'],
+  }
+  const next = await collect(model, continuation)
+  assert.equal(next.at(-1)?.type, 'finish')
+  assert.equal(runtime.starts.length, 2)
+  assert.deepEqual(runtime.sessions[0]?.inputs.map(inputText), ['hello', 'again'])
+})
+
+test('an auxiliary release cannot remove a conversation generation', async () => {
+  const runtime = new ScriptedNativeRuntime()
+  runtime.enqueue(textTurn('answer'))
+  const { model, sessions } = makeAdapter({ runtime, spendGate: gate() })
+  await collect(model, { ...textRequest('hello', 'guard-session') })
+  const live = sessions.conversation('guard-session')
+  assert.ok(live !== undefined)
+  assert.equal(live.auxiliary, false)
+  await sessions.releaseAuxiliary(live.key)
+  assert.equal(sessions.size(), 1)
+  assert.equal(sessions.get(live.key) !== undefined, true)
+  assert.equal(live.phase, 'READY')
+  await sessions.releaseAuxiliary('aux:missing')
+  assert.equal(sessions.size(), 1)
+  await model.closeOwnedSessions()
+  assert.equal(sessions.size(), 0)
 })

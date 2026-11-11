@@ -206,6 +206,10 @@ also binds its absolute workspace path. A workspace is not a session identity.
 An auxiliary request uses a separate key with its request purpose and unique
 call ID; it can never release a conversation's pending tool results.
 
+An auxiliary stream always releases its key after the bounded close or the
+invalidation. The release refuses a conversation generation. A later call with
+the same auxiliary key starts a new native session.
+
 Listen for the dsh `session/disposed` event. Close the conversation generations
 of the disposed session through the bounded `closeKey` path. Do not close an
 auxiliary call or a different session. A disposal with no live generation is a
