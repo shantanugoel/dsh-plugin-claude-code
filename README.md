@@ -1,5 +1,8 @@
 # dsh-plugin-claude-code
 
+[![npm](https://img.shields.io/npm/v/dsh-plugin-claude-code)](https://www.npmjs.com/package/dsh-plugin-claude-code)
+[![license](https://img.shields.io/npm/l/dsh-plugin-claude-code)](LICENSE)
+
 Use your Claude subscription in DeepSeek Harness (dsh). The plugin runs the
 official Claude Code CLI through the official Agent SDK. It keeps one native
 Claude session for each dsh session. This preserves Claude's signed thinking
@@ -34,7 +37,17 @@ API key, a Claude Console login, and a custom billing endpoint.
 
 ## Install
 
-The repository does not contain `dist/`. The `prepare` script builds it from the
+From npm:
+
+```sh
+dsh plugin --profile web add dsh-plugin-claude-code
+```
+
+Replace `web` with another profile name. The npm package contains the built
+`dist/`, so it needs no build step. The sections below describe the GitHub and
+local installs.
+
+The repository does not contain `dist/`. (The npm package does.) The `prepare` script builds it from the
 locked dependencies when a package manager installs the repository as a Git
 dependency. Do not add a separate build step for a GitHub install.
 
@@ -271,3 +284,18 @@ If an image is refused, confirm that the dsh profile mounts the attachment
 service. A profile without that service still works for text.
 
 For design and test details, see [docs/design.md](docs/design.md).
+
+## Author and links
+
+Made by [Shantanu Goel](https://x.com/shantanugoel) ([@shantanugoel](https://x.com/shantanugoel) on X).
+
+- Source: <https://github.com/shantanugoel/dsh-plugin-claude-code>
+- Issues: <https://github.com/shantanugoel/dsh-plugin-claude-code/issues>
+- npm: <https://www.npmjs.com/package/dsh-plugin-claude-code>
+
+This is an unofficial community plugin. It is not affiliated with Anthropic or
+DeepSeek.
+
+## License
+
+[MIT](LICENSE)

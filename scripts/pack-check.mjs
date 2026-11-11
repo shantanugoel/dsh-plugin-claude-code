@@ -47,4 +47,4 @@ if (missing.length > 0 || forbidden.length > 0) {
   process.exit(1)
 }
 
-console.log(`Package inspection accepted ${files.length} files. No license is selected yet.`)
+console.log(`Package inspection accepted ${files.length} files.`)
