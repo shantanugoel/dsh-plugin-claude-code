@@ -236,6 +236,35 @@ The desktop app build-approval flow was not run. `--dump-config` composes the
 route but does not run plugin JavaScript; the first task in issue #13 covers the
 module import.
 
+## Live dsh acceptance
+
+An isolated `DSH_HOME` headless profile on 2026-11-11 used dsh 0.2.2-rc.1, the
+plugin from `github:shantanugoel/dsh-plugin-claude-code` at commit `2131abc`
+(package 0.2.0, Agent SDK 0.3.322), Claude Code CLI 2.1.319, the route
+`claude-code-session`, and the shipped headless template. The user's desktop
+profile was not used. See
+[live-dsh-acceptance-2026-11-11.json](evidence/live-dsh-acceptance-2026-11-11.json).
+
+- Measured: the plugin installs from the documented GitHub spec in this
+  isolated profile and answers a task.
+- Measured: one real `read_image` tool-result image reached the model through
+  the plugin and the model read PANGOLIN7. The Lead also measured this.
+- Measured: a subagent session received and read the image and reported
+  PANGOLIN7. The Lead also measured this.
+- Measured: the plugin stores `retentionAudit: accepted` for an in-profile
+  request that passes its checks and `unavailable` when a check fails.
+- Unverified: a user-image turn through dsh, because the headless app has no
+  attachment input path.
+- Unverified: signed-thinking retention after a tool result through the
+  in-profile audit. The first response had a signed thinking block, but the
+  following request stored `unavailable` with the capture failure `earlier
+  message prefix differs`; an image tool-result continuation fails with
+  `unsupported image content`.
+- Unverified: the live output-cap mapping, because the headless task path has no
+  `maxTokens` control. Offline row O39 covers the mapping only.
+- Unverified: a many-image dsh session. The direct-SDK 100 and 101 image probe
+  succeeded and did not reach the provider limit.
+
 ## Commands
 
 The engine range is Node.js `>=24.9.0`. The checks below ran on Node.js

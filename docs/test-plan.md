@@ -357,6 +357,25 @@ G01 to G04 passed on 2026-11-11. The reviewed summary is
 rejection cases changed the package requirement, not the runtime version, because
 no later dsh release exists. The exemption flow was not exercised.
 
+## Live dsh acceptance checks
+
+The checked-in summary is
+[live-dsh-acceptance-2026-11-11.json](evidence/live-dsh-acceptance-2026-11-11.json).
+The runs used an isolated `DSH_HOME` headless profile, not the desktop profile.
+
+| ID | Check | Result |
+| --- | --- | --- |
+| L01 | One user image reaches the model through dsh | Unverified: the headless app has no attachment input path |
+| L02 | One image tool result reaches the model through dsh | Measured: `read_image` result PANGOLIN7 |
+| L03 | A subagent session receives and reads an image | Measured: subagent read PANGOLIN7 |
+| L04 | The next native request after a tool result retains the signed thinking block unchanged | Unverified: the following request stored `unavailable` (`earlier message prefix differs`; image content is not compared yet) |
+| L05 | `CLAUDE_CODE_MAX_OUTPUT_TOKENS` reaches the native request | Unverified: the headless task path has no `maxTokens` control; offline row O39 only |
+| L06 | A many-image session offloads safely or fails with the documented code | Unverified: no dsh profile run with more than 80 retained images |
+
+The plugin reports `unavailable` honestly when a check fails. Do not describe a
+correct answer, a stored replay envelope, or an accepted audit as retention
+proof until L04 passes.
+
 ## Release gate
 
 Release requires the offline suite, real dsh integration, accepted strict spend

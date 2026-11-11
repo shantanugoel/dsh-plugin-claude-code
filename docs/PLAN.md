@@ -106,6 +106,17 @@ turns. The probe produced no signed thinking block, so live signature retention
 is not measured, and a live turn in an installed dsh profile is not measured.
 
 
+Status, 2026-11-11 (issue #13): the plugin installs from the documented GitHub
+spec in an isolated `DSH_HOME` headless profile and answers a live task. A real
+`read_image` tool result and a subagent image both reached the model and read
+PANGOLIN7. A user-image turn is unverified because the headless app has no
+attachment input. Signed-thinking retention after a tool result is unverified:
+the first response had a signed block, but the following request stored
+`retentionAudit: unavailable` (`earlier message prefix differs`; image content
+is not compared yet). The live output-cap mapping and a many-image dsh session
+are unverified (no headless `maxTokens` control; no >80-image dsh run). See
+[live-dsh-acceptance-2026-11-11.json](evidence/live-dsh-acceptance-2026-11-11.json).
+
 ## Fixed requirements
 
 - Minimum target: dsh 0.2.2-rc.1, the only published release. Keep the exact
@@ -378,7 +389,9 @@ done. The many-image probe did not reach the provider image limit.
 - [x] Add offline tests O33 to O40 and a real-dsh-runtime projection test.
 - [x] Run the official SDK probe with one user image and one tool-result image.
 - [ ] Run an image turn through an installed dsh profile and inspect the native
-  request record. This needs the deployment scope from the user.
+  request record. The image tool-result path is measured. The user-image path is
+  unverified because the headless app has no attachment input, and the
+  post-tool-result request record is `unavailable` (see issue #13 evidence).
 - [x] Bound each conversation request with an image count and encoded-byte
   budget. Fail before dispatch with `IMAGE_OFFLOAD_REQUIRED` and
   `failure.offloadImages`. A retry sends placeholder text for each offloaded

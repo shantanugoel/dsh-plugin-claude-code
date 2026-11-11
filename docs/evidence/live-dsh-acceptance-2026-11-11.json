@@ -1,0 +1,81 @@
+{
+  "measurement_date": "2026-11-11",
+  "issue": 13,
+  "environment": {
+    "dsh_cli": "0.2.2-rc.1",
+    "claude_code_cli": "2.1.319",
+    "agent_sdk": "0.3.322",
+    "plugin_package": "dsh-plugin-claude-code 0.2.0",
+    "plugin_source": "github:shantanugoel/dsh-plugin-claude-code at commit 2131abc",
+    "plugin_install": "documented GitHub spec with the pnpm allowBuilds approval flow",
+    "dsh_home": "isolated temporary DSH_HOME; headless profile from the shipped template",
+    "route": "claude-code-session, model haiku or opus, reasoningEffort high",
+    "desktop_profile_used": false,
+    "transcript_log_note": "The dsh profile sandbox denies the Claude CLI transcript write under the user home. The plugin request audit uses the official raw-body diagnostic instead.",
+    "bash_tool_note": "The dsh headless sandbox refuses the bash tool (SANDBOX_UNAVAILABLE). The measured tool calls use dsh filesystem tools."
+  },
+  "lead_measurements": {
+    "note": "The Lead measured the same two image items independently in an isolated headless profile before this record. The raw run outputs are read-only under .local/evidence/live-dsh-acceptance-2026-11-11/ (acc-image-out.jsonl, acc-subagent-out.jsonl, acc-think-out.jsonl).",
+    "image_tool_result": "read_image tool call, completed image/png 480x160 tool result, final answer PANGOLIN7",
+    "subagent_image": "subagent tool call started a subagent; the final answer was PANGOLIN7",
+    "thinking_run": "a complex opus prompt produced one thinking block with empty display text",
+    "raw_outputs": ".local/evidence/live-dsh-acceptance-2026-11-11/ (acc-image-out.jsonl, acc-subagent-out.jsonl, acc-think-out.jsonl, read-only)"
+  },
+  "checks": [
+    {
+      "id": "L01",
+      "item": "One user image reaches the model through dsh",
+      "result": "unverified",
+      "blocker": "The headless app has no attachment input path: a task is text on the command line or stdin, so no user message can carry an image block. No dsh profile was given a user-image turn."
+    },
+    {
+      "id": "L02",
+      "item": "One image tool result reaches the model through dsh",
+      "result": "measured",
+      "method": "dsh --profile headless --json with the task: use the read_image tool on word.png and reply with the word",
+      "observed": "tool_call read_image, tool_result completed with image/png 480x160 6637 bytes, final answer PANGOLIN7",
+      "raw_capture": ".local/evidence/live-dsh-acceptance-2026-11-11/raw-delivery/acc-image-out.jsonl"
+    },
+    {
+      "id": "L03",
+      "item": "A subagent session receives and reads an image",
+      "result": "measured",
+      "method": "the same profile with the task: start a subagent that reads word.png with read_image and report the word",
+      "observed": "subagent tool call, subagent descriptor in the dsh session, final answer PANGOLIN7. The raw run is in the Lead artifacts for the 2131abc profile; an earlier delivery run in an isolated profile at commit f2dccce showed the same shape and answer.",
+      "raw_capture": ".local/evidence/live-dsh-acceptance-2026-11-11/acc-subagent-out.jsonl (Lead) and .local/evidence/live-dsh-acceptance-2026-11-11/raw-delivery/acc-subagent-delivery.jsonl (delivery)"
+    },
+    {
+      "id": "L04",
+      "item": "The next native request after a tool result retains the signed thinking block unchanged",
+      "result": "unverified",
+      "blocker": "The first response produced a signed thinking block (signature present, 1048 characters in the delivery run; 912 in the Lead run). For the following request the plugin request audit stored retentionAudit 'unavailable' with the capture failure 'earlier message prefix differs'. An image tool-result continuation additionally fails with 'unsupported image content' because the merged capture does not compare image content. The plugin therefore cannot certify signature retention in-profile, and no independent raw request body is retained after close. This needs a request-capture fix (multi-message assistant grouping plus the continuation message shape)."
+    },
+    {
+      "id": "L05",
+      "item": "CLAUDE_CODE_MAX_OUTPUT_TOKENS reaches the native request",
+      "result": "unverified",
+      "blocker": "The headless app exposes no maxTokens control on the task path, so a dsh turn cannot set GenerateOptions.maxTokens. The mapping is offline-tested only (row O39, decision D17)."
+    },
+    {
+      "id": "L06",
+      "item": "A many-image session offloads safely or fails with the documented code",
+      "result": "unverified",
+      "blocker": "A dsh profile run with more than 80 retained images (or the dsh image-offload retry) was not run. The direct official-SDK probe sent 100 and 101 synthetic images and both succeeded, so the provider limit was not reached (many-image-probe-2026-11-11.json)."
+    }
+  ],
+  "retention_audit_note": "In the simple image runs the plugin stored retentionAudit 'accepted' for the request before the image tool result and 'unavailable' for the request after it. That is the honest, fail-closed behavior: no false audit claim.",
+  "no_direct_model_request": true,
+  "raw_capture_committed": false,
+  "proven": [
+    "The plugin installs from the documented GitHub spec in an isolated headless profile and serves the Claude route.",
+    "A real dsh read_image tool-result image reaches the model through the plugin.",
+    "A subagent session receives and reads an image through the plugin.",
+    "The plugin reports retentionAudit 'accepted' for in-profile requests that pass its checks and 'unavailable' when a check fails."
+  ],
+  "not_proven": [
+    "A user-image turn through dsh (no headless attachment input).",
+    "Signed-thinking retention after a tool result through the in-profile audit.",
+    "The live output-cap mapping through dsh.",
+    "A many-image dsh session, offload retry, or rollover."
+  ]
+}

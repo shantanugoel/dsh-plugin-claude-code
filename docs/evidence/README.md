@@ -68,6 +68,17 @@ thinking block, so live signature retention is not measured. A live turn in an
 installed dsh profile is not measured. The record contains no account data and no
 raw capture.
 
+## Live dsh acceptance
+
+[live-dsh-acceptance-2026-11-11.json](live-dsh-acceptance-2026-11-11.json)
+records the issue #13 runs on 2026-11-11. An isolated `DSH_HOME` headless profile
+used the plugin from the documented GitHub spec, dsh 0.2.2-rc.1, Claude Code
+2.1.319, and Agent SDK 0.3.322. One real `read_image` tool result and one
+subagent image reached the model (PANGOLIN7). A user-image turn, signed-thinking
+retention after a tool result, the live output cap, and a many-image session are
+unverified with the exact blockers in the record. The Lead measured the same two
+image items independently; the raw run outputs stay in `.local/`.
+
 ## Engine check
 
 [engine-check-2026-11-11.json](engine-check-2026-11-11.json) records the issue #12

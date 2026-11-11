@@ -196,6 +196,14 @@ message.
   its complete definition. If a record is missing or differs, the audit reports
   `unavailable` and the turn still completes.
 
+- Live acceptance in an isolated dsh profile measured one real `read_image`
+  tool result and one subagent image reaching the model (PANGOLIN7). A user-image
+  turn is unverified because the headless app has no attachment input. Signed
+  thinking retention after a tool result is unverified: the request audit stored
+  `unavailable` for that request. The output-cap mapping and many-image dsh
+  behavior are offline-tested or measured with the direct SDK only. See
+  [docs/evidence/live-dsh-acceptance-2026-11-11.json](docs/evidence/live-dsh-acceptance-2026-11-11.json).
+
 ## Troubleshooting
 
 If the model list is empty, run `claude auth status`. The output must show
