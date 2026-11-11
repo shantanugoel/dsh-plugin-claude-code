@@ -212,12 +212,16 @@ ran before D20 added the `prepare` script:
 
 The same `npm test`, `npm run check`, `npm run build`, and `npm run pack:check`
 commands passed again after the transcript, session-import, and catalog work.
-After the image work the suite has 76 tests and `pack:check` accepted 55 files.
-The suite passed again on 2026-11-11 after the distribution change, with 76
-tests. The package version is 0.2.0. No license is selected. The suite does not
-read Claude credentials and does not contact a model. `supportedModels()` is not
-called. A supplied catalog row uses its exact id. `prepareCall` keeps one
-configuration generation for the later stream. Production supplies no catalog.
+After the image work the suite had 76 tests and `pack:check` accepted 55
+files. The suite passed again on 2026-11-11 after the distribution change,
+with 76 tests. After the native-error work, which was merged after the rollover work, the
+suite has 117 tests and the packed file list has 57 files. The `npm pack --dry-run` check on 2026-11-11
+used a temporary npm cache, because the default npm cache in this environment
+has root-owned entries and `npm pack` cannot write to it. The package version
+is 0.2.0. No license is selected. The suite does not read Claude credentials
+and does not contact a model. `supportedModels()` is not called. A supplied
+catalog row uses its exact id. `prepareCall` keeps one configuration
+generation for the later stream. Production supplies no catalog.
 
 `npm run test:live` exits with code 2. It starts no Claude process. `test`,
 `check`, `build`, and `pack:check` do not call it. The package has no

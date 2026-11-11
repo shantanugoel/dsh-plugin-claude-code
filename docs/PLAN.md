@@ -11,9 +11,13 @@ subscription login may send a prompt. The official SDK query starts only when
 not driven. Do not mark later tasks complete from the direct-CLI measurement.
 
 Status, 2026-11-11: M9 adds text and image content support. The offline suite
-has 76 tests. A direct official-SDK probe read a synthetic image through a user
-message and through an MCP tool result. The plugin did not run inside a dsh
-profile for this change.
+had 76 tests at that point. A direct official-SDK probe read a synthetic image
+through a user message and through an MCP tool result. The plugin did not run
+inside a dsh profile for this change.
+
+Status, 2026-11-11: M10 maps native turn errors to stable dsh codes and reports
+a `max_tokens` stop as a truncated finish. The offline suite has 117 tests after
+this change merged. No live provider error was measured.
 
 Status, 2026-11-11 (issue #1): the Git install distribution builds `dist/` at
 install time through the `prepare` script (D20). An isolated dsh profile
@@ -269,6 +273,31 @@ dsh profile acceptance run is not done.
   retention with signed thinking, and image delivery to a subagent.
 - [ ] Decide whether a compaction summary can import the transcript without
   signed history. Keep `UNSUPPORTED_INPUT` until a measurement passes.
+
+## M10. Native turn errors and truncated answers
+
+Status on 2026-11-11: offline work is complete. No live provider error was
+measured.
+
+- [x] Add a pure native result mapping module. Keep the mapping independent of
+  the SDK.
+- [x] Map context overflow, quota, first-party credit, rate limit, auth, and
+  server errors to stable dsh codes.
+- [x] Normalize the two Claude wordings that the dsh classifiers do not read.
+- [x] Keep the native message text and remove tokens, headers, account
+  identities, email addresses, and long opaque values.
+- [x] Emit one `turn-error` native event and one thrown `LlmError` with the
+  stable code.
+- [x] Do not report an error after a complete assistant response.
+- [x] Translate an assistant or result `max_tokens` stop to a `max-tokens`
+  finish. Keep the replay state.
+- [x] Refuse a truncated turn that carries a tool call.
+- [x] Add offline tests O53 to O57.
+- [ ] Measure the real error finishes with the provider. This needs a live
+  request that the current release policy does not allow.
+
+Completion: dsh receives the correct stable code for each measured native
+result, and a truncated answer is never a `stop` finish.
 
 ## Working rules
 

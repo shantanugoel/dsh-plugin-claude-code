@@ -324,3 +324,55 @@ The recovery record uses reason `abort`, `timeout`, `process-loss`, `restore`,
 
 Evidence: offline rows O43 to O52. No live model request was made for this
 change. The import uses the same streaming input path as an ordinary user turn.
+## D22. Map native result errors to stable dsh codes
+
+Decision: map each official SDK result message to a stable dsh code in the pure
+module `src/native-failure.ts`. The module does not import the SDK. A native
+error becomes one `turn-error` native event. The adapter throws one `LlmError`
+with the mapped code. The dsh LLM runtime converts that throw into a terminal
+`error` finish, so `agent/request-error` listeners can act on the code.
+
+The mapping is:
+
+| Native fact | dsh code |
+| --- | --- |
+| Context-overflow wording | `CONTEXT_WINDOW_EXCEEDED` |
+| Quota or usage-limit wording | `QUOTA` |
+| First-party credit, balance, or billing wording | `ACCOUNT_QUOTA` |
+| HTTP 429, rate-limit wording | `RATE_LIMIT` |
+| HTTP 401 or 403, auth wording, auth assistant error | `AUTH` |
+| HTTP 5xx, overload or server wording | `SERVER` |
+| Turn-limit subtypes `error_max_turns`, `error_max_budget_usd`, `error_max_structured_output_retries` | `MALFORMED_RESPONSE` |
+| `error_during_execution` | `NATIVE_OUTCOME_UNKNOWN` |
+| Any other unreadable turn | `MALFORMED_RESPONSE` |
+| A `max_tokens` stop | No failure. The finish is `max-tokens`. |
+
+The dsh classifier `isContextWindowExceededError` does not match the Claude
+"prompt is too long: N tokens > M maximum" form. The classifier
+`isQuotaExceededError` does not match the Claude "credit balance is too low"
+form. The mapper tests both Claude forms and keeps the same two stable codes.
+The copy of the native message text keeps the diagnosis. It removes tokens,
+authentication headers, account identities, email addresses, and long opaque
+values. It bounds the length and it keeps a usable HTTP status.
+
+An error result that follows a complete `message-stop` is not reported again.
+A `max_tokens` stop is a truncation: the finish is `max-tokens` with replay
+state, never `stop`. A truncated turn that carries a tool call returns
+`MALFORMED_RESPONSE`, because the plugin must not execute a call from a
+truncated turn and must not continue a native transcript that holds an
+unmatched call.
+
+Reason: dsh routes recovery and retry on codes, never on message text.
+`dsh-compaction-basic` starts context-overflow recovery only for
+`CONTEXT_WINDOW_EXCEEDED`. `dsh-agent-loop` sends the failure to the
+`agent/request-error` waterfall. The earlier code collapsed every native error
+into `MALFORMED_RESPONSE`, so no dsh recovery could act. A `max_tokens` stop
+looked like a complete answer.
+
+Evidence: offline rows O53 to O57. The tests use synthetic SDK result objects
+and the real dsh 0.2.2-rc.1 `LlmRuntime` with the scripted native runtime. No
+live provider error was produced. The dsh recovery path also needs the
+compaction summary support from the open capacity work and the recorded new
+generation from D21. The offline tests do not drive the full dsh compaction
+recovery, so this change does not claim that a retry after a context overflow
+succeeds.

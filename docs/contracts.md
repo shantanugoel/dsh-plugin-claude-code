@@ -28,6 +28,7 @@ Planned source files:
 | `src/rollover.ts` | Deterministic bounded textual import and recovery boundary split |
 | `src/mcp-bridge.ts` | Tool definitions, waiting handlers, result mapping |
 | `src/stream.ts` | Partial events, completed blocks, usage, and finish |
+| `src/native-failure.ts` | Pure native result mapping, message cleanup, and dsh error conversion |
 | `src/context.ts` | dsh workspace and prompt integration |
 | `src/rebase.ts` | Recorded context replacement and generation reset |
 | `src/auth.ts` | Environment filtering and official auth-status check |
@@ -86,9 +87,15 @@ Map finishes to the minimum version's actual union:
 ```ts
 { type: 'finish', reason: { kind: 'tool-calls' }, replayState }
 { type: 'finish', reason: { kind: 'stop' }, replayState }
+{ type: 'finish', reason: { kind: 'max-tokens' }, replayState }
 { type: 'finish', reason: { kind: 'error', failure: { code, message } } }
 { type: 'finish', reason: { kind: 'aborted', failure: { code, message } } }
 ```
+
+A `max-tokens` finish reports a truncated turn. It keeps the replay state. It
+is never a `stop` finish, because the answer can be incomplete. A native turn
+that hits the output-token limit and also carries a tool call is not safe: the
+plugin refuses it with `MALFORMED_RESPONSE` and does not execute the call.
 
 Emit exactly one finish and no later chunks for a dsh stream. Tool arguments are
 raw JSON strings in dsh. Reject malformed completed arguments before tool
@@ -146,6 +153,28 @@ prove isolation. The initialization event is not the complete native tool list.
 SDK method names and semantics are version-dependent. Implement and test this
 mapping before relying on it. Do not claim a flag was applied because it was
 present in an options object.
+
+One SDK message is the turn result. It reports the turn outcome. Translate one
+result into native events with a pure function. The function reads the result
+subtype, `is_error`, `errors`, `api_error_status`, `stop_reason`, the result
+text, and the latest assistant message error. It does not import the SDK.
+
+Use these native events for a turn:
+
+```ts
+{ type: 'message-stop'; messageId; stopReason: 'end_turn' | 'tool_use' | 'max_tokens' }
+{ type: 'turn-error'; failure: { code, message, status? } }
+```
+
+A result that reports a turn error produces one `turn-error` event. Do not
+produce that event when a `message-stop` already published a complete assistant
+response: the response is usable and the error is not reported twice. Stop the
+read at a `message-stop` or at a `turn-error`. A `turn-error` before a stop
+makes the adapter throw one `LlmError` with the stable code. The dsh LLM runtime
+turns that throw into a terminal `error` finish. The agent
+`agent/request-error` listeners then receive the code. For example,
+`dsh-compaction-basic` runs its context-overflow recovery only for
+`CONTEXT_WINDOW_EXCEEDED`.
 
 ## Session identity and state
 
@@ -395,6 +424,28 @@ their names. They are non-retryable unless the failure is proven pre-dispatch.
 | `TOOL_RESULT_MISMATCH` | Result IDs, counts, order, or data disagree |
 | `MALFORMED_RESPONSE` | Completed model output cannot be used safely |
 | `NATIVE_OUTCOME_UNKNOWN` | Dispatch or result delivery may have occurred, or the request repeats a dispatched request after a failed generation |
+
+A native turn result maps to a dsh provider-neutral code. These codes are not
+plugin codes, but they are stable and dsh routes on them.
+
+| Native result fact | dsh code |
+| --- | --- |
+| Context-overflow wording, including the Claude "prompt is too long" form | `CONTEXT_WINDOW_EXCEEDED` |
+| Quota or usage-limit wording | `QUOTA` |
+| First-party credit, balance, or billing wording | `ACCOUNT_QUOTA` |
+| HTTP 429, rate-limit wording, or assistant error `rate_limit` | `RATE_LIMIT` |
+| HTTP 401 or 403, auth wording, or an auth assistant error | `AUTH` |
+| HTTP 5xx, overload wording, or assistant error `overloaded` or `server_error` | `SERVER` |
+| Result subtype `error_max_turns`, `error_max_budget_usd`, or `error_max_structured_output_retries` | `MALFORMED_RESPONSE` |
+| Result subtype `error_during_execution` | `NATIVE_OUTCOME_UNKNOWN` |
+| Any other unreadable turn error | `MALFORMED_RESPONSE` |
+| A `max_tokens` stop reason | No failure. Use a `max-tokens` finish. |
+
+Keep the native message text in the failure message. Remove credentials,
+authentication headers, account identities, email addresses, and long opaque
+values before the message leaves the plugin. Bound the message length. Put a
+usable HTTP status on the failure when the native result reports one. An
+unreadable turn error is non-retryable.
 
 An abort yields dsh's `aborted` finish and closes the native generation. Do not
 send a fabricated tool result to make the SDK stop. Close gracefully, then end

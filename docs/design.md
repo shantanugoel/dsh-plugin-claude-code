@@ -2,11 +2,11 @@
 
 Status: on 2026-11-11 the plugin supports text and image input, image-bearing
 tool results, and file attachments through dsh projection. The offline suite
-covers these paths. A direct official-SDK probe read a synthetic word through a
-user image and an MCP tool-result image. That probe did not run the plugin in a
-dsh profile. No plugin was installed in a dsh profile for this change.
-Production inference is refused. The complete plugin has not passed a live
-dsh integration test.
+covers these paths and the native turn-error mapping. A direct official-SDK
+probe read a synthetic word through a user image and an MCP tool-result image.
+That probe did not run the plugin in a dsh profile. No plugin was installed in a
+dsh profile for this change. Production inference is refused. The complete
+plugin has not passed a live dsh integration test.
 
 Use one stateful `LlmAdapter` with one persistent official Claude Agent SDK
 session for each dsh session generation. The SDK must run the user's installed,
@@ -373,7 +373,56 @@ capabilities at load time; do not promise compatibility with an untested future
 release. Keep the provider out of the selectable catalog until its release
 conditions pass.
 
-**9. Limits of this design**
+**9. Native turn failures and truncated answers**
+
+The official SDK sends one result message for each turn. The result reports the
+outcome of that turn. Map the result to native events with one pure function.
+The function reads these facts and does not import the SDK:
+
+- The result subtype.
+- The `is_error`, `errors`, and `api_error_status` fields.
+- The result `stop_reason` and text.
+- The error value of the latest assistant message.
+
+Map the facts to stable dsh codes, because dsh routes recovery on the code and
+not on the message text. `dsh-compaction-basic` starts its context-overflow
+recovery only for `CONTEXT_WINDOW_EXCEEDED`. The retry policy uses
+`RATE_LIMIT`, `QUOTA`, and `AUTH`. The old behavior collapsed every native error
+into `MALFORMED_RESPONSE`, and dsh could not tell the failures apart.
+
+The dsh classifiers `isContextWindowExceededError` and `isQuotaExceededError`
+read the generic provider wording. The Claude API reports an oversized request
+as "prompt is too long: N tokens > M maximum", and it reports a low balance as
+"credit balance is too low". The first form does not match the generic
+context-overflow pattern. The second form does not match the generic quota
+pattern. The mapper recognizes these two Claude forms and then uses the same
+stable codes. Record these additions in the decision file.
+
+A native error does not pass through as a normal response. The native session
+emits one `turn-error` event with the mapped failure. The adapter throws one
+`LlmError` with that code. The dsh LLM runtime converts the throw into a
+terminal `error` finish, and the agent `agent/request-error` listeners then
+receive the code. A complete assistant response is never reported twice: an
+error result that follows its `message-stop` is ignored. A `turn-error` event
+before any stop fails the turn. The generation then becomes invalid, as for
+every other adapter error.
+
+Keep the native message text in the failure. Remove tokens, authentication
+headers, account identities, email addresses, and long opaque values. Bound the
+message length. Carry a usable HTTP status when the native result reports one.
+
+A `stop_reason` of `max_tokens` is a truncation, not a complete answer. The
+assistant message stop and the result stop can both carry it. Translate it to
+the native stop `max_tokens` and then to the dsh finish
+`{ kind: 'max-tokens' }`. Keep the replay state. Never emit a `stop` finish for
+it. A turn that hits the output-token limit and also carries a tool call is not
+safe: the plugin refuses the turn with `MALFORMED_RESPONSE` and does not execute
+the call. The answer text of a truncated turn can be incomplete.
+
+The evidence for this section is offline. It uses synthetic SDK result objects
+and the scripted native runtime. No live provider error was produced.
+
+**10. Limits of this design**
 
 This design does not make the CLI a stateless transcript API. It does not allow
 arbitrary transcript import, silent mid-tool context updates, or signature reuse
@@ -391,4 +440,11 @@ The plugin cannot guarantee Anthropic's acceptance of a truthful dsh prompt or
 the account's future billing classification. It cannot promise custom dsh HTTP
 attribution headers through the SDK unless an official supported interface is
 found and tested. Keep local attribution in dsh. The content mapping, the image
-limits, and the explicit refusals are specified in [contracts.md](contracts.md).
+limits, the native error mapping, and the explicit refusals are specified in
+[contracts.md](contracts.md).
+
+The native error codes and the `max-tokens` finish are offline-tested only. The
+plugin has no live measurement of a provider error and no live measurement of
+the dsh recovery path. Context-overflow recovery also needs the recorded new
+generation from section 6. Until that path exists, the dsh retry of the step
+returns `REBASE_REQUIRED`.

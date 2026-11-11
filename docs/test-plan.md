@@ -2,16 +2,18 @@
 
 Use three test layers. Keep the result of each layer separate.
 
-Offline status on 2026-11-11: the Node suite covers rows O01 through O52 with
-synthetic data and the scripted runtime, and 90 tests pass. The dsh 0.2.2-rc.1
+Offline status on 2026-11-11: the Node suite covers rows O01 through O57 with
+synthetic data and the scripted runtime, and 117 tests pass. The dsh 0.2.2-rc.1
 LLM service, session store, and compaction balance functions are loaded in that
-suite. The real dsh LLM runtime is mounted for file and image projection tests.
-The agent loop is not driven. No offline command starts the installed Claude
-binary. The distribution checks I01 to I06 also passed on 2026-11-11.
+suite. The real dsh LLM runtime is mounted for file and image projection tests
+and for the native error finish test. The agent loop is not driven. No offline
+command starts the installed Claude binary. The distribution checks I01 to I06
+also passed on 2026-11-11.
 
-Rows O43 to O52 cover generation recovery with a recorded textual import. They
-are offline tests. No live model request measured the rollover, and the tests
-claim no signed-thinking retention across it.
+Rows O43 to O52 cover generation recovery with a recorded textual import. Rows
+O53 to O57 cover native turn-error mapping and truncated answers. They are
+offline tests. No live model request measured the rollover or a provider error,
+and the tests claim no signed-thinking retention across the rollover.
 
 A separate live probe on 2026-11-11 used the official SDK 0.3.322 and Claude
 Code 2.1.319. It read one synthetic image from a user message and one synthetic
@@ -109,6 +111,11 @@ result delivery, opened session, close request, and remaining child handle.
 | O50 | Restored tool-result continuation with no live process | The import holds the completed outcome; one dsh stream; no old MCP handler is released |
 | O51 | Two consecutive recoveries | Each turn stores one `generationChange`; the generation ids increase; one dsh session |
 | O52 | Import content and bounds | No signature, thinking text, image bytes, or tool-call ids; the text is deterministic and bounded; an exact repeat of a dispatched request is refused with `NATIVE_OUTCOME_UNKNOWN` |
+| O53 | Native result with the Claude context-overflow wording | One failure with `CONTEXT_WINDOW_EXCEEDED` and its HTTP status; a terminal dsh `error` finish; no complete answer |
+| O54 | Native result with HTTP 429, quota wording, first-party credit wording, and auth wording | `RATE_LIMIT`, `QUOTA`, `ACCOUNT_QUOTA`, and `AUTH`; no token, header, or account text in the messages |
+| O55 | Assistant message or result with `stop_reason` `max_tokens` | Exactly one `max-tokens` finish, no `stop` finish, replay state present |
+| O56 | Error result after a complete assistant stop | No second report and no `turn-error` event; the complete response stays usable |
+| O57 | Execution error, unknown result subtype, and a truncated turn with a tool call | `NATIVE_OUTCOME_UNKNOWN` for `error_during_execution`; `MALFORMED_RESPONSE` for an unknown subtype; the truncated call is not executed |
 
 Use independent expected response data for thinking tests. A comparison that
 derives both expected and actual data from the altered request cannot detect a
@@ -151,6 +158,8 @@ Required checks:
 - Context replacement uses real surface coordinates and persistence flushes.
   The old events remain available in the raw log.
 - Session disposal and plugin removal close the exact owned native sessions.
+- A native turn error becomes a terminal dsh `error` finish with its mapped
+  code, so the real `agent/request-error` waterfall receives the code.
 - A model catalog blocked by the spend guard cannot be selected as a usable route.
 - The packaged plugin resolves the host's service classes and does not register
   duplicate providers after reload.

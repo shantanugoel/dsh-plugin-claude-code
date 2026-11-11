@@ -93,6 +93,29 @@ runs each call with its own sandbox and approvals.
   This applies after Stop, a generation timeout, a lost Claude process, a dsh
   restore or reload, and a forked subagent. The dsh session continues. The
   import does not keep the old signed thinking.
+- **Truncated answers.** A turn that stops at the output-token limit gets a
+  `max-tokens` finish. The answer is incomplete. The plugin never reports this
+  turn as a normal stop.
+
+## Errors
+
+The route reports stable error codes. dsh selects recovery behavior from the
+code. It does not parse the message text.
+
+| Code | Meaning |
+| --- | --- |
+| `CONTEXT_WINDOW_EXCEEDED` | The request is larger than the model context window. dsh context compaction can act on this code. |
+| `RATE_LIMIT` | The account reached a request-rate limit. |
+| `QUOTA` | The plan usage or the provider quota is exhausted. |
+| `ACCOUNT_QUOTA` | The first-party account balance or billing state needs an action. |
+| `AUTH` | The login is absent, refused, or not first-party. |
+| `SERVER` | The provider reported an overload or a server error. |
+| `MALFORMED_RESPONSE` | A native turn ended with output or a limit that dsh cannot use as a complete answer. |
+| `NATIVE_OUTCOME_UNKNOWN` | A native turn failed with an unknown outcome. dsh does not retry it. |
+
+The messages keep the native text. The plugin removes tokens, authentication
+headers, account identities, email addresses, and long opaque values from each
+message.
 
 ## Limits
 
@@ -105,6 +128,8 @@ runs each call with its own sandbox and approvals.
 - Recovery starts a new Claude session. It does not keep the earlier signed
   thinking, because the new session starts a new thinking chain. The earlier
   events stay in the dsh log.
+- A truncated turn can carry only text. The plugin does not execute a tool call
+  from a turn that stops at the output-token limit.
 - A session-title call works. A compaction or summary call that replays
   conversation history returns `UNSUPPORTED_INPUT`, because a new native session
   cannot import signed history. Record a context import to start a new

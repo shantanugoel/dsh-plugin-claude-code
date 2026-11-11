@@ -1,8 +1,9 @@
-import { ToolCallId, type StreamChunk, type TokenUsage } from '@deepseek-ai/dsh-llm'
+import { ToolCallId, type FinishReason, type StreamChunk, type TokenUsage } from '@deepseek-ai/dsh-llm'
 
 import type { CanonicalBlock } from './transcript.js'
 import { assertEvidenceFits, retentionProofAccepted } from './evidence.js'
 import { pluginFailure } from './errors.js'
+import { nativeFailureError } from './native-failure.js'
 import type { NativeEvent } from './sdk-runtime.js'
 
 /** Why the native generation ended, for the recorded generation change. */
@@ -45,7 +46,7 @@ export interface NativeResponseBlock {
 export interface TranslatedTurn {
   readonly chunks: StreamChunk[]
   readonly pendingCalls: readonly PendingToolCall[]
-  readonly stopReason: 'end_turn' | 'tool_use'
+  readonly stopReason: 'end_turn' | 'tool_use' | 'max_tokens'
   readonly blocks: readonly CanonicalBlock[]
   readonly nativeBlocks: readonly NativeResponseBlock[]
   readonly nativeMessageIds: readonly string[]
@@ -87,16 +88,23 @@ export function blockKey(messageId: string, index: number): string {
 /**
  * Translate one complete native turn into dsh chunks.
  * A repeated partial event and its completed snapshot become one block.
+ * A turn-error event becomes one thrown LlmError with its stable code.
  * Malformed tool arguments throw before a tool chunk is returned.
  */
 export function translateTurn(events: readonly NativeEvent[], input: TranslateInput): TranslatedTurn {
   const blocks = new Map<string, OpenBlock>()
   const order: OpenBlock[] = []
   let usage: TokenUsage | undefined
-  let stopReason: 'end_turn' | 'tool_use' | undefined
+  let stopReason: 'end_turn' | 'tool_use' | 'max_tokens' | undefined
   let evidence: unknown
   const messageIds: string[] = []
   for (const event of events) {
+    if (event.type === 'turn-error') {
+      // The native turn failed before it published a complete response.
+      // A complete response is never reported twice: the producer drops a
+      // turn-error event that follows its message-stop.
+      throw nativeFailureError(event.failure)
+    }
     if (event.type === 'usage') {
       if (usage !== undefined) throw pluginFailure('MALFORMED_RESPONSE', 'The native response repeated its usage.')
       usage = {
@@ -109,7 +117,7 @@ export function translateTurn(events: readonly NativeEvent[], input: TranslateIn
     }
     if (event.type === 'message-stop') {
       if (stopReason !== undefined) throw pluginFailure('MALFORMED_RESPONSE', 'The native response stopped twice.')
-      if (event.stopReason !== 'end_turn' && event.stopReason !== 'tool_use') {
+      if (event.stopReason !== 'end_turn' && event.stopReason !== 'tool_use' && event.stopReason !== 'max_tokens') {
         throw pluginFailure('MALFORMED_RESPONSE', 'The native response has an unknown stop.')
       }
       stopReason = event.stopReason
@@ -256,6 +264,12 @@ export function translateTurn(events: readonly NativeEvent[], input: TranslateIn
   if (stopReason === 'end_turn' && pendingCalls.length > 0) {
     throw pluginFailure('MALFORMED_RESPONSE', 'The native response stopped but still contains tool calls.')
   }
+  if (stopReason === 'max_tokens' && pendingCalls.length > 0) {
+    throw pluginFailure(
+      'MALFORMED_RESPONSE',
+      'The native response hit the output-token limit with a tool call. The truncated call was not executed.',
+    )
+  }
   chunks.push({ type: 'usage', usage })
   const auditAccepted = retentionProofAccepted(evidence)
   return {
@@ -330,7 +344,7 @@ export async function readUntilStop(
         ), 'process-loss')
       }
       events.push(step.result.value)
-      if (step.result.value.type === 'message-stop') return events
+      if (step.result.value.type === 'message-stop' || step.result.value.type === 'turn-error') return events
     }
   } finally {
     if (timer !== undefined) clearTimeout(timer)
@@ -340,6 +354,16 @@ export async function readUntilStop(
 
 export function isAbortError(error: unknown): boolean {
   return error instanceof DOMException && error.name === 'AbortError'
+}
+
+/**
+ * Translate one native stop reason into its dsh finish reason.
+ * A max_tokens stop stays a truncation forever: it is never reported as stop.
+ */
+export function finishReasonFor(stopReason: TranslatedTurn['stopReason']): FinishReason {
+  if (stopReason === 'tool_use') return { kind: 'tool-calls' }
+  if (stopReason === 'max_tokens') return { kind: 'max-tokens' }
+  return { kind: 'stop' }
 }
 
 function publishTool(block: OpenBlock, input: TranslateInput): {

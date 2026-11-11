@@ -36,7 +36,7 @@ import type { LiveGeneration, SessionManager } from './session-manager.js'
 import type { Session, SessionStore } from '@deepseek-ai/dsh-session'
 
 import type { SpendGate } from './spend-gate.js'
-import { isAbortError, nativeFailureReasonOf, readUntilStop, translateTurn } from './stream.js'
+import { finishReasonFor, isAbortError, nativeFailureReasonOf, readUntilStop, translateTurn } from './stream.js'
 import {
   admitTranscript,
   publicationFrom,
@@ -539,7 +539,7 @@ export class ClaudeCodeAdapter extends LlmAdapter {
       ...translated.chunks,
       {
         type: 'finish',
-        reason: translated.stopReason === 'tool_use' ? { kind: 'tool-calls' } : { kind: 'stop' },
+        reason: finishReasonFor(translated.stopReason),
         replayState: { response: replay },
       },
     ]

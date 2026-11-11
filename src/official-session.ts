@@ -3,7 +3,7 @@ import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import { pluginFailure } from './errors.js'
-import { eventsFromAssistant, readToolUseId } from './sdk-events.js'
+import { eventsFromAssistant, eventsFromResult, readToolUseId } from './sdk-events.js'
 import { zodShapeForTool } from './sdk-schema.js'
 import { DSH_MCP_SERVER, PINNED_SDK_VERSION } from './sdk-plan.js'
 import type {
@@ -53,6 +53,13 @@ interface OfficialMessage {
   readonly tools?: readonly string[]
   readonly stop_reason?: string | null
   readonly is_error?: boolean
+  readonly api_error_status?: number | null
+  /** Native error text of an is_error success result. */
+  readonly result?: string
+  /** Error list of an SDKResultError. */
+  readonly errors?: readonly unknown[]
+  /** Error value of an SDKAssistantMessage. */
+  readonly error?: string
   readonly usage?: {
     readonly input_tokens?: number
     readonly output_tokens?: number
@@ -168,6 +175,7 @@ async function consume(
 ): Promise<void> {
   let stopSent = false
   let messageId = 'assistant'
+  let latestAssistantError: unknown
   for await (const message of query) {
     if (message.type === 'system' && message.subtype === 'init') {
       if (typeof message.session_id === 'string') identity.cliSessionId = message.session_id
@@ -177,6 +185,7 @@ async function consume(
     }
     if (message.type === 'assistant' && message.message !== undefined) {
       if (stopSent) stopSent = false
+      if (typeof message.error === 'string' && message.error.trim() !== '') latestAssistantError = message.error
       let hasTool = false
       for (const event of eventsFromAssistant(message.message)) {
         if (event.type === 'message-stop') {
@@ -196,29 +205,28 @@ async function consume(
       continue
     }
     if (message.type === 'result') {
-      if (message.subtype !== undefined && message.subtype !== 'success') {
-        queue.fail(pluginFailure('MALFORMED_RESPONSE', 'The native session reported a turn error.'))
+      const events = eventsFromResult(message, {
+        messageId,
+        stopSent,
+        ...(latestAssistantError === undefined ? {} : { latestAssistantError }),
+      })
+      latestAssistantError = undefined
+      let failed = false
+      for (const event of events) {
+        if (event.type === 'message-stop') {
+          stopSent = true
+          messageId = event.messageId
+        }
+        if (event.type === 'turn-error') failed = true
+        queue.push(event)
+      }
+      if (failed) {
+        // The adapter fails the turn with the mapped code and closes this
+        // generation. No later event belongs to it.
+        queue.close()
         return
       }
-      if (stopSent) continue
-      const inputTokens = message.usage?.input_tokens
-      const outputTokens = message.usage?.output_tokens
-      if (typeof inputTokens === 'number' && typeof outputTokens === 'number') {
-        queue.push({
-          type: 'usage',
-          inputTokens,
-          outputTokens,
-          ...(message.usage?.cache_read_input_tokens === undefined
-            ? {}
-            : { cacheReadTokens: message.usage.cache_read_input_tokens }),
-          ...(message.usage?.cache_creation_input_tokens === undefined
-            ? {}
-            : { cacheWriteTokens: message.usage.cache_creation_input_tokens }),
-        })
-      }
-      const stopReason = message.stop_reason === 'tool_use' ? 'tool_use' : 'end_turn'
-      queue.push({ type: 'message-stop', messageId, stopReason })
-      stopSent = true
+      continue
     }
   }
   queue.close()

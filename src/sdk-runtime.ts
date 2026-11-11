@@ -1,3 +1,4 @@
+import type { NativeFailure } from './native-failure.js'
 import type { SdkLaunchPlan } from './sdk-plan.js'
 
 /** Raster image media types accepted by the official Claude interfaces. */
@@ -81,7 +82,12 @@ export type NativeEvent =
     readonly cacheReadTokens?: number
     readonly cacheWriteTokens?: number
   }
-  | { readonly type: 'message-stop'; readonly messageId: string; readonly stopReason: 'end_turn' | 'tool_use' }
+  | {
+    readonly type: 'message-stop'
+    readonly messageId: string
+    readonly stopReason: 'end_turn' | 'tool_use' | 'max_tokens'
+  }
+  | { readonly type: 'turn-error'; readonly failure: NativeFailure }
   | { readonly type: 'native-tool-list'; readonly names: readonly string[] }
   | { readonly type: 'request-evidence'; readonly record: unknown }
 
