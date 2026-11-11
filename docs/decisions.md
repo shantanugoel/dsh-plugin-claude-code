@@ -709,3 +709,10 @@ the literal "only dsh MCP tools" acceptance item is not met; the design permits
 the inert placeholder only with its complete definition recorded, which this
 capture does. An image-bearing request still reports `unavailable` because the
 capture refuses image content; that item stays unmeasured.
+
+Final state on 2026-11-11: the in-profile audit stores `accepted` for simple
+tool turns. It still stores `unavailable` for a thinking tool-turn continuation
+with the reason "earlier message prefix differs", so signed-thinking retention
+through the in-profile audit stays unmeasured and is not claimed. The direct
+evidence for thinking retention remains the saved direct-CLI measurement
+(cli-2.1.319.json); the in-profile path needs its own measurement.
