@@ -1,0 +1,47 @@
+{
+  "measurement_date": "2026-11-11",
+  "transport": "official Agent SDK 0.3.322 streaming input; Claude Code CLI 2.1.319",
+  "auth_route": {
+    "authMethod": "claude.ai",
+    "apiProvider": "firstParty",
+    "subscriptionType": "pro"
+  },
+  "requested_model": "haiku",
+  "fixture": {
+    "synthetic": true,
+    "format": "PNG",
+    "dimensions": "480x160",
+    "bytes": 6637,
+    "word": "PANGOLIN7"
+  },
+  "probe_user_image": {
+    "request": "one text block and one base64 PNG block in the streaming user message",
+    "finish_subtype": "success",
+    "is_error": false,
+    "answer": "PANGOLIN7",
+    "answer_matches_fixture": true
+  },
+  "probe_tool_result_image": {
+    "request": "one dsh-style MCP tool returning text and one base64 PNG content item",
+    "tool_called": true,
+    "tool_name": "mcp__probe__show_word_image",
+    "finish_subtype": "success",
+    "is_error": false,
+    "answer": "PANGOLIN7",
+    "answer_matches_fixture": true
+  },
+  "new_inference_requests_during_probe": 2,
+  "raw_capture_committed": false,
+  "proven": [
+    "The official SDK streaming input accepts an image content block in a user message.",
+    "The Claude Code CLI forwards an image content item from an in-process SDK MCP tool result.",
+    "The selected model read the same synthetic word through both image paths."
+  ],
+  "not_proven": [
+    "The plugin's own installed dsh profile path; this probe used the SDK directly.",
+    "Signed thinking retention on an image turn.",
+    "Image offload, multi-image budget behavior, or PDF/document input.",
+    "Image input through a subagent session.",
+    "Behavior on another CLI or SDK version."
+  ]
+}

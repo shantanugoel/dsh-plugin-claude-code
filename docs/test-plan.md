@@ -2,10 +2,18 @@
 
 Use three test layers. Keep the result of each layer separate.
 
-Offline status on 2026-11-10: the Node suite covers rows O01 through O32 with
-synthetic data and the scripted runtime. The dsh 0.2.2-rc.1 LLM service,
-session store, and compaction balance functions are loaded in that suite. The
-agent loop is not driven. No offline command starts the installed Claude binary.
+Offline status on 2026-11-11: the Node suite covers rows O01 through O42 with
+synthetic data and the scripted runtime, and 76 tests pass. The dsh 0.2.2-rc.1
+LLM service, session store, and compaction balance functions are loaded in that
+suite. The real dsh LLM runtime is mounted for file and image projection tests.
+The agent loop is not driven. No offline command starts the installed Claude
+binary.
+
+A separate live probe on 2026-11-11 used the official SDK 0.3.322 and Claude
+Code 2.1.319. It read one synthetic image from a user message and one synthetic
+image from an MCP tool result. See
+[the probe summary](evidence/sdk-image-probe-2026-11-11.json). It did not run
+the plugin in dsh.
 
 1. Offline unit tests use synthetic data and a scripted SDK transport.
 2. Offline dsh integration tests use real dsh packages and the scripted transport.
@@ -77,6 +85,16 @@ result delivery, opened session, close request, and remaining child handle.
 | O30 | Plugin unload, stalled iterator, and concurrent stream | Owned processes reaped; stable busy/error outcome |
 | O31 | Unknown finish, control, role, or model | Explicit error; no fallback and no ignored field |
 | O32 | Native request evidence missing, redacted, or truncated | Retention proof unavailable; do not report audit success |
+| O33 | One user image with a text block before and after it | One request version with the target dimensions; descriptor text before the image; base64 bytes in order |
+| O34 | One tool result with text and image blocks | MCP result content keeps the text, descriptor, and image order; the parked handler receives the batch |
+| O35 | An image block with `offloaded: true` | Placeholder text only; the attachment service is not read |
+| O36 | An image in a system or assistant message, a file block in an adapter request, or an image without an attachment service | `UNSUPPORTED_INPUT` before native dispatch |
+| O37 | One file block through the real dsh LLM runtime | The runtime replaces the file with its read-only handle text; the adapter never receives the bytes |
+| O38 | One image through the real dsh LLM runtime | The runtime keeps the image because the route declares image input; the adapter receives the block |
+| O39 | A session-title call with `maxTokens`, an invalid output cap, or a changed cap | The cap reaches `CLAUDE_CODE_MAX_OUTPUT_TOKENS`; an invalid or changed cap is refused before dispatch |
+| O40 | A compaction-style auxiliary call with assistant history | `UNSUPPORTED_INPUT` with no native session start |
+| O41 | Two leading user messages | One native prompt with both content lists in order |
+| O42 | Assistant usage that reports cache read and write tokens | The usage chunk keeps both cache counts |
 
 Use independent expected response data for thinking tests. A comparison that
 derives both expected and actual data from the altered request cannot detect a
@@ -106,6 +124,14 @@ Required checks:
 
 Record exact dsh, Node, SDK, and CLI versions in `docs/compatibility.md` when this
 file is created. A passing test on a newer release does not verify 0.2.2-rc.1.
+
+## Live image test
+
+On 2026-11-11 the official SDK probe read a synthetic word from one user image
+and from one MCP tool-result image. The probe used the first-party subscription
+login and made two inference requests. The evidence summary records the model,
+versions, fixture, answers, and gaps. This is not a plugin-in-dsh test and not a
+retention test. Repeat it on the plugin's actual dsh path before a release claim.
 
 ## Live retention test
 
@@ -165,5 +191,8 @@ proof, and live content/retention tests on the advertised runtime pair. Report
 the live negative-test status explicitly. If it is unavailable, do not advertise
 full live tamper certification. Do not spend money to test a no-spend assertion.
 
-Keep native resume, binary protocol changes, and additional content types outside
-the compatibility claim until their own measurements pass.
+Keep native resume, binary protocol changes, image offload on long sessions,
+document input, and additional content types outside the compatibility claim
+until their own measurements pass. The 2026-11-11 image probe measured one image
+in a user message and one image in a tool result. It did not measure many images,
+image retention with signed thinking, or subagent image delivery.

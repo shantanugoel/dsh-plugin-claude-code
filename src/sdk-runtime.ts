@@ -1,12 +1,24 @@
 import type { SdkLaunchPlan } from './sdk-plan.js'
 
+/** Raster image media types accepted by the official Claude interfaces. */
+export type NativeImageMediaType = 'image/png' | 'image/jpeg' | 'image/webp' | 'image/gif'
+
+/** One content block sent to the native session. Images carry base64 bytes. */
+export type NativeContentBlock =
+  | { readonly type: 'text'; readonly text: string }
+  | {
+    readonly type: 'image'
+    readonly mediaType: NativeImageMediaType
+    readonly data: string
+  }
+
 /**
  * Internal native session boundary. Tests inject a scripted implementation.
  * The production class loads the official SDK only when `start` runs.
  */
 export interface NativeToolResult {
   readonly callId: string
-  readonly text: string
+  readonly content: readonly NativeContentBlock[]
   readonly isError: boolean
 }
 
@@ -19,7 +31,7 @@ export interface NativeSessionConfig {
 }
 
 export interface NativeUserInput {
-  readonly text: string
+  readonly content: readonly NativeContentBlock[]
 }
 
 export interface NativeSessionIdentity {
@@ -62,7 +74,13 @@ export type NativeEvent =
     readonly signature?: string
     readonly redactedData?: string
   }
-  | { readonly type: 'usage'; readonly inputTokens: number; readonly outputTokens: number }
+  | {
+    readonly type: 'usage'
+    readonly inputTokens: number
+    readonly outputTokens: number
+    readonly cacheReadTokens?: number
+    readonly cacheWriteTokens?: number
+  }
   | { readonly type: 'message-stop'; readonly messageId: string; readonly stopReason: 'end_turn' | 'tool_use' }
   | { readonly type: 'native-tool-list'; readonly names: readonly string[] }
   | { readonly type: 'request-evidence'; readonly record: unknown }

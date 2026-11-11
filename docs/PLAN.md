@@ -10,6 +10,11 @@ subscription login may send a prompt. The official SDK query starts only when
 `supportedModels()` is not called. No license is selected. The agent loop was
 not driven. Do not mark later tasks complete from the direct-CLI measurement.
 
+Status, 2026-11-11: M9 adds text and image content support. The offline suite
+has 76 tests. A direct official-SDK probe read a synthetic image through a user
+message and through an MCP tool result. The plugin did not run inside a dsh
+profile for this change.
+
 ## Fixed requirements
 
 - Minimum target: dsh 0.2.2-rc.1. Check each advertised later version.
@@ -206,6 +211,32 @@ Production may send a prompt after a first-party subscription login. Live
 acceptance has not run. The package has no selected license. The agent loop
 integration and a profile install remain open. A successful offline test does
 not show that signed thinking reached Anthropic.
+
+## M9. Multimodal content support
+
+Status on 2026-11-11: offline work is complete. The live SDK probe passed. A
+dsh profile acceptance run is not done.
+
+- [x] Declare text and image input for catalog rows and resolved models.
+- [x] Send a user image as one exact request version with descriptor text, a
+  1568-pixel longest edge, and a 4 MiB target.
+- [x] Send text and image blocks from tool results as MCP result content.
+- [x] Replace an offloaded image with placeholder text and read no bytes.
+- [x] Refuse an image without the attachment service, an image in a system or
+  assistant message, and an unsupported result block before dispatch.
+- [x] Report the exact image target and image price on the adapter.
+- [x] Keep file bytes outside the adapter and test the dsh runtime projection.
+- [x] Map `maxTokens` to `CLAUDE_CODE_MAX_OUTPUT_TOKENS` and include the cap in
+  the generation identity.
+- [x] Accept the harness auxiliary purposes; support a session-title call.
+- [x] Add offline tests O33 to O40 and a real-dsh-runtime projection test.
+- [x] Run the official SDK probe with one user image and one tool-result image.
+- [ ] Run an image turn through an installed dsh profile and inspect the native
+  request record. This needs the deployment scope from the user.
+- [ ] Measure many retained images, image offload on a long session, image
+  retention with signed thinking, and image delivery to a subagent.
+- [ ] Decide whether a compaction summary can import the transcript without
+  signed history. Keep `UNSUPPORTED_INPUT` until a measurement passes.
 
 ## Working rules
 

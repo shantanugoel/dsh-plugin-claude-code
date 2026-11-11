@@ -184,3 +184,75 @@ showed Haiku 5.5 offers low, medium, high, xhigh, and max. Opus 4.6 and
 Sonnet 4.6 omit xhigh. Haiku 4.5 reports no effort support. A level outside
 that model's list is refused. A change after the session starts returns
 `REBASE_REQUIRED`.
+
+## D15. Accept images through exact request versions
+
+Decision: declare `inputModalities: ['text', 'image']` in the catalog and in
+`resolveModel`. Read one request version for each retained image through the dsh
+attachment service. Send it as a base64 image block in the user message or in
+the MCP tool result. Write one stable descriptor line before it. Use a longest
+edge of 1568 pixels and a 4 MiB encoded-byte target. Report the same target and
+price through `imageRequestTarget` and `imageRequestPricing`.
+
+Reason: the Claude vision documentation says the API scales an image longer
+than 1568 pixels down and applies a 5 MB encoded-byte limit. A request version
+that follows those limits is deterministic and does not send more bytes than the
+model uses. The real dsh LLM runtime keeps image blocks for a route that
+declares the image modality and replaces them with placeholder text otherwise.
+The image block snapshot keeps the durable attachment reference, not the bytes.
+The `offloaded` flag stays out of the snapshot because it changes projection
+text and not message identity.
+
+Evidence: offline rows O33 to O38. The live SDK probe on 2026-11-11 read a
+synthetic word from one user image and one tool-result image. It did not test a
+dsh profile, many images, or image retention with signed thinking.
+
+## D16. Support several blocks in one tool result
+
+Decision: a tool result carries an ordered content list. Map text blocks and
+image blocks to MCP `CallToolResult` content items. Refuse every other block
+before the batch is released. Do not join the blocks into one text value.
+
+Reason: the dsh tool pipeline stores a tool result as a content block list. A
+tool such as `read_image` returns one text envelope and one image block. Joining
+the list would lose the image. The CLI maps MCP text and image items into the
+tool-result content for the model. The SDK declaration permits this content
+shape, and the 2026-11-11 probe measured it.
+
+## D17. Map maxTokens to the official output-cap control
+
+Decision: map a dsh `maxTokens` value to the official
+`CLAUDE_CODE_MAX_OUTPUT_TOKENS` environment variable for that native session.
+Keep the value in the generation identity. Reject a non-positive or non-integer
+value before dispatch.
+
+Reason: the Claude Code environment reference documents this control. The Agent
+SDK has no output-token option. Without the mapping, a title or summary request
+that carries `maxTokens` is refused. A change to the cap changes the process
+environment, so it requires a new native generation. The mapping uses a
+supported official control and does not change billing or client identity.
+
+## D18. Accept harness auxiliary purposes
+
+Decision: accept every auxiliary `purpose` value that the harness sends. Run a
+title request as a separate native session with the usual admission checks. A
+summary or compaction request that replays assistant history returns
+`UNSUPPORTED_INPUT` with a recorded-import message.
+
+Reason: dsh 0.2.2-rc.1 sends the purposes `session-title` and `compaction`, not
+the earlier `title` and `summary` names. A title request has one user message and
+can use a fresh session. A compaction summary replays the conversation prefix
+and needs the signed native prefix. A fresh process cannot import that prefix,
+so a correct refusal is better than a false success. Compaction stays an open
+gap until a recorded import path exists.
+
+## D19. Keep file bytes outside the adapter
+
+Decision: do not read or send file bytes. The dsh runtime projects every
+`FileBlock` to deterministic handle text with a read-only path. Keep that
+behavior. Refuse a file block that reaches the adapter directly.
+
+Reason: the dsh LLM runtime owns file projection for every route. A second
+projection in the adapter would duplicate the code and could disagree with the
+runtime. The model reads the saved file with the dsh file tools. This makes
+file attachments work without a new content mapping.

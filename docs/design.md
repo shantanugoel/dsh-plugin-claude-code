@@ -1,11 +1,12 @@
 # Claude subscription adapter design
 
-Status: the repository has an offline package. The launch plan describes one
-persistent native session and does not start it. Scripted tests check the
-transcript, replay envelope, tool-result suffix, and a dsh session import.
-No plugin was installed in a dsh profile. Production inference is refused.
-The saved request test passed. The complete plugin has not passed a live
-integration test.
+Status: on 2026-11-11 the plugin supports text and image input, image-bearing
+tool results, and file attachments through dsh projection. The offline suite
+covers these paths. A direct official-SDK probe read a synthetic word through a
+user image and an MCP tool-result image. That probe did not run the plugin in a
+dsh profile. No plugin was installed in a dsh profile for this change.
+Production inference is refused. The complete plugin has not passed a live
+dsh integration test.
 
 Use one stateful `LlmAdapter` with one persistent official Claude Agent SDK
 session for each dsh session generation. The SDK must run the user's installed,
@@ -42,6 +43,13 @@ The signature is equal in the original output and the second recorded request.
 See [the measurement summary](evidence/cli-2.1.319.json). This is evidence from the CLI request
 record and a subsequent server response. It is not an independent packet capture
 or a server signature-validation trace.
+
+On 2026-11-11 a direct official-SDK probe measured the image paths. It used SDK
+0.3.322 and Claude Code 2.1.319 with the subscription login. One probe sent a
+synthetic PNG in the streaming user message. A second probe returned the same
+PNG from an in-process MCP tool. The model read the word in both cases. See
+[the image probe summary](evidence/sdk-image-probe-2026-11-11.json). The probe
+did not run the plugin inside dsh and did not test image retention with thinking.
 
 The request also includes `DeferredToolPlaceholder` and `advisor`, although the
 startup event lists only `mcp__dsh__probe`. Thus, the startup tool list alone is
@@ -151,8 +159,18 @@ At the completed native model-response boundary:
 
 Stage results by native tool-use ID, independently of MCP callback arrival order.
 This avoids a deadlock if the CLI invokes handlers one at a time. Release the
-complete validated batch only after dsh has recorded it. The bridge must support
-the content type or refuse it; do not silently flatten images or structured data.
+complete validated batch only after dsh has recorded it. The bridge maps text
+blocks and image blocks to MCP result content in their original order. It
+refuses any other result block before release. A tool result can hold several
+blocks, so a text summary and its image stay in one result.
+
+For a user image, the adapter reads one exact request version from the
+attachment service and sends it as a base64 image block. It writes one stable
+text line before that block with the attachment identity and the request size.
+The request version uses a longest edge of 1568 pixels and a target of 4 MiB.
+These values match the provider vision guidance. A dsh file block never reaches
+the adapter: the runtime replaces it with a read-only path handle. An offloaded
+image becomes placeholder text and no bytes are read.
 
 Use a sufficient MCP timeout. Disable background tool handling. A timeout,
 interruption, truncated response, or uncertain delivery invalidates the live
@@ -176,6 +194,21 @@ membership does not establish an account's current model entitlement.
 Keep the prompt, native tool definitions, conversion rules, and model fixed for
 the generation. Record the CLI's own prompt prefix and reminders. The measurement
 shows that `--system-prompt` does not remove every CLI-added input.
+
+Resolve the model with `inputModalities: ['text', 'image']`. This makes the dsh
+runtime keep image blocks for this route, and it lets the prompt admission and
+the subagent admission accept images. Report the exact image target and image
+price through `imageRequestTarget` and `imageRequestPricing`. The route does not
+declare an image offload in the model catalog; the adapter reads the `offloaded`
+flag on each occurrence.
+
+Map a dsh `maxTokens` control to the official `CLAUDE_CODE_MAX_OUTPUT_TOKENS`
+environment control for the new native session. The value stays fixed for that
+generation, as the model and effort do. A change requires a new generation.
+Accept the harness auxiliary purposes. A title call is a new isolated native
+session. A summary or compaction call that replays conversation history returns
+`UNSUPPORTED_INPUT` until a recorded import path exists.
+
 
 Do not use the host process directory as a workspace fallback or change its
 shared working directory. Two dsh sessions in different workspaces must have
@@ -325,11 +358,12 @@ subscription-only billing switch, or prove crash-safe native resume.
 
 It does not establish that fresh-process replay or a relay can never work.
 Those paths are outside this design. The existing measurements support one
-persistent CLI tool turn and an offline preservation check. They do not close
-other paths or establish a production-ready plugin.
+persistent CLI tool turn, an offline preservation check, and two synthetic
+image paths through the official SDK. They do not close other paths or establish
+a production-ready plugin.
 
 The plugin cannot guarantee Anthropic's acceptance of a truthful dsh prompt or
 the account's future billing classification. It cannot promise custom dsh HTTP
 attribution headers through the SDK unless an official supported interface is
-found and tested. Keep local attribution in dsh. The first release's text-only
-content scope and explicit refusals are specified in [contracts.md](contracts.md).
+found and tested. Keep local attribution in dsh. The content mapping, the image
+limits, and the explicit refusals are specified in [contracts.md](contracts.md).

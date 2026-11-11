@@ -7,7 +7,7 @@ import { DEFAULT_DEADLINES } from '../src/deadlines.js'
 import { mapToolNames } from '../src/mcp-bridge.js'
 import type { NativeEvent, NativeToolResult } from '../src/sdk-runtime.js'
 import { EvidenceSpendGate, type SpendProof } from '../src/spend-gate.js'
-import { textRequest, textTurn } from './request.js'
+import { resultText, textRequest, textTurn } from './request.js'
 import { ScriptedNativeRuntime, type ScriptedTurn } from './scripted-runtime.js'
 import { interpretAuthStatus } from '../src/auth.js'
 import { SYNTHETIC_AUTH_STATUS, makeAdapter } from './support.js'
@@ -110,9 +110,9 @@ test('tool calls stay on one scripted session and dsh supplies the only result',
     invokeHandlers: async (call) => {
       seen.push('start-1')
       const first = await call('call-1')
-      seen.push(`got-1:${first.text}:${String(first.isError)}`)
+      seen.push(`got-1:${resultText(first)}:${String(first.isError)}`)
       const second = await call('call-2')
-      seen.push(`got-2:${second.text}:${String(second.isError)}`)
+      seen.push(`got-2:${resultText(second)}:${String(second.isError)}`)
     },
   }
   runtime.enqueue(turn)

@@ -1,3 +1,4 @@
+import type { ImageAttachmentRef } from '@deepseek-ai/dsh-attachment'
 import {
   LlmAdapter,
   resolveRetryPolicy,
@@ -16,6 +17,13 @@ import { requireAbsoluteWorkspace, type WorkspaceSource } from './context.js'
 import { withDeadline, type Deadlines } from './deadlines.js'
 import { claudeEffort, reasoningFor, type ClaudeEffort } from './effort.js'
 import { pluginFailure } from './errors.js'
+import {
+  claudeImageRequestPricing,
+  claudeImageTarget,
+  prepareNativeContent,
+  type ImageAttachmentReader,
+  type OutgoingBlock,
+} from './images.js'
 import { McpBridge, mapToolNames } from './mcp-bridge.js'
 import { projectCatalogModel } from './catalog.js'
 import type { DiscoveredModel } from './model-discovery.js'
@@ -23,13 +31,13 @@ import { recordContextImport as appendContextImport } from './rebase.js'
 import { parseReplay, type ReplayV1 } from './replay.js'
 import { CLAUDE_CODE_SESSION_ROUTE, INFERENCE_SCOPE } from './route.js'
 import { buildSdkLaunchPlan } from './sdk-plan.js'
-import type { NativeRuntime } from './sdk-runtime.js'
+import type { NativeContentBlock, NativeRuntime, NativeToolResult } from './sdk-runtime.js'
 import type { LiveGeneration, SessionManager } from './session-manager.js'
 import type { Session, SessionStore } from '@deepseek-ai/dsh-session'
 
 import type { SpendGate } from './spend-gate.js'
 import { isAbortError, readUntilStop, translateTurn } from './stream.js'
-import { admitTranscript, publicationFrom, requestHasReplay, type Admission } from './transcript.js'
+import { admitTranscript, publicationFrom, requestHasReplay, type Admission, type ToolResultInput } from './transcript.js'
 
 export interface AdapterDependencies {
   readonly runtime: NativeRuntime
@@ -40,15 +48,20 @@ export interface AdapterDependencies {
   readonly home: HomeSource
   readonly parentEnv: () => NodeJS.ProcessEnv
   readonly deadlines: Deadlines
+  readonly attachments: () => ImageAttachmentReader | undefined
   readonly settingsFiles?: () => readonly string[]
   readonly configuration?: { current(): number }
   readonly catalog?: readonly DiscoveredModel[]
   readonly discoverModels?: () => Promise<readonly DiscoveredModel[]>
 }
 
-const SUPPORTED_BLOCK_TYPES = new Set(['text', 'reasoning', 'tool-call'])
 const SUPPORTED_ROLES = new Set(['system', 'user', 'assistant', 'tool'])
-const AUXILIARY_PURPOSES = new Set(['title', 'summary'])
+const BLOCK_TYPES_BY_ROLE: Readonly<Record<string, ReadonlySet<string>>> = {
+  system: new Set(['text']),
+  user: new Set(['text', 'image']),
+  assistant: new Set(['text', 'reasoning', 'tool-call']),
+  tool: new Set(['text', 'image']),
+}
 
 /**
  * dsh adapter for route `claude-code-session`.
@@ -101,25 +114,51 @@ export class ClaudeCodeAdapter extends LlmAdapter {
     return models
   }
 
-  async resolveModel(
+  resolveModel(
     provider: string,
     model: string,
     signal?: AbortSignal,
   ): Promise<LlmResolvedModelInfo> {
     this.assertRoute(provider)
-    if (signal?.aborted === true) throw new DOMException('The model request was aborted.', 'AbortError')
+    if (signal?.aborted === true) return Promise.reject(new DOMException('The model request was aborted.', 'AbortError'))
     if (model.trim() === '') {
-      throw pluginFailure('UNSUPPORTED_INPUT', 'The model id is empty.')
+      return Promise.reject(pluginFailure('UNSUPPORTED_INPUT', 'The model id is empty.'))
     }
-    const row = await this.modelRow(model)
-    const reasoning = reasoningFor(row)
-    return {
-      provider,
-      id: model,
-      name: model,
-      inputModalities: ['text'],
-      ...(reasoning === undefined ? {} : { reasoning }),
-    }
+    return this.modelRow(model).then((row) => {
+      if (signal?.aborted === true) {
+        throw new DOMException('The model request was aborted.', 'AbortError')
+      }
+      const reasoning = reasoningFor(row)
+      return {
+        provider,
+        id: model,
+        name: model,
+        inputModalities: ['text', 'image'],
+        ...(reasoning === undefined ? {} : { reasoning }),
+      }
+    })
+  }
+
+  /**
+   * Report the exact image projection this adapter serializes. The Claude API
+   * scales a longer edge above 1568 px down, so a larger request image adds no
+   * model detail and costs more bytes.
+   */
+  imageRequestTarget(provider: string, model: string, image: ImageAttachmentRef): {
+    readonly width: number
+    readonly height: number
+    readonly maxBytes: number
+  } {
+    this.assertRoute(provider)
+    void model
+    return claudeImageTarget(image)
+  }
+
+  /** Price retained images as the descriptor text and visual tokens they send. */
+  imageRequestPricing(provider: string, model: string) {
+    this.assertRoute(provider)
+    void model
+    return claudeImageRequestPricing()
   }
 
   async prepareCall(provider: string, model: string, signal?: AbortSignal): Promise<PreparedAdapterCall> {
@@ -180,7 +219,7 @@ export class ClaudeCodeAdapter extends LlmAdapter {
     const workspace = requireAbsoluteWorkspace(this.dependencies.workspace.current(sessionId))
     const auxiliary = options.purpose !== undefined
     const admitKey = auxiliary
-      ? `aux:${sessionId}:${options.purpose ?? ''}:${contentHash(options.messages)}`
+      ? `aux:${sessionId}:${options.purpose ?? ''}:${options.maxTokens ?? ''}:${contentHash(options.messages)}`
       : `conversation:${sessionId}`
     const existing = auxiliary ? undefined : this.dependencies.sessions.conversation(sessionId)
     if (existing?.phase === 'GENERATING' || existing?.phase === 'STARTING') {
@@ -223,20 +262,30 @@ export class ClaudeCodeAdapter extends LlmAdapter {
     workspace: string,
     key: string,
   ): AsyncIterable<StreamChunk> {
+    if (options.messages.some((message) => message.role === 'assistant' || message.role === 'tool')) {
+      throw pluginFailure(
+        'UNSUPPORTED_INPUT',
+        'This auxiliary request replays conversation history, which needs a recorded import.',
+      )
+    }
+    const admission = admitTranscript({
+      messages: options.messages,
+      waitingForResults: false,
+      state: { committed: [], pending: undefined, dispatchedHash: undefined },
+    })
+    if (admission.kind !== 'first-user') {
+      throw pluginFailure(
+        'UNSUPPORTED_INPUT',
+        'This auxiliary request replays conversation history, which needs a recorded import.',
+      )
+    }
+    const content = await this.prepareContent(admission.userContent, options.signal)
     const effort = await this.effortFor(options.model, options.reasoningEffort)
     const live = await this.ensureSession(undefined, key, options, workspace, true, 'aux', effort)
     try {
-      const admission = admitTranscript({
-        messages: options.messages,
-        waitingForResults: false,
-        state: { committed: [], pending: undefined, dispatchedHash: undefined },
-      })
-      if (admission.kind !== 'first-user') {
-        throw pluginFailure('UNSUPPORTED_INPUT', 'An auxiliary request cannot continue a tool call.')
-      }
       live.phase = 'GENERATING'
       live.dispatchedHash = admission.requestHash
-      await live.native.sendUser({ text: admission.userText })
+      await live.native.sendUser({ content })
       const chunks = await this.collectTurn(live, admission, options.signal)
       live.phase = 'READY'
       for (const chunk of chunks) yield chunk
@@ -275,13 +324,14 @@ export class ClaudeCodeAdapter extends LlmAdapter {
     if (live !== undefined && (
       live.model !== options.model
       || live.effort !== effort
+      || live.maxOutputTokens !== options.maxTokens
       || live.workspace !== workspace
       || live.systemPrompt !== prompt
       || live.toolsCanonical !== toolsCanonical
     )) {
       throw pluginFailure(
         'REBASE_REQUIRED',
-        'The model, effort, workspace, prompt, or tools changed. Start a recorded new generation.',
+        'The model, effort, output cap, workspace, prompt, or tools changed. Start a recorded new generation.',
       )
     }
     const admission = admitTranscript({
@@ -293,11 +343,27 @@ export class ClaudeCodeAdapter extends LlmAdapter {
         dispatchedHash: live?.dispatchedHash,
       },
     })
+    // Prepare every image and result before the native boundary. A refusal
+    // here sends nothing, so the same step can retry after a repair. If tool
+    // handlers are parked, release them with an error instead of leaving them
+    // until their deadline.
+    let userContent: readonly NativeContentBlock[] | undefined
+    let toolResults: readonly NativeToolResult[] | undefined
+    try {
+      if (admission.kind === 'tool-results') {
+        toolResults = await this.prepareResults(admission.results, options.signal)
+      } else {
+        userContent = await this.prepareContent(admission.userContent, options.signal)
+      }
+    } catch (error) {
+      if (live?.phase === 'WAITING_FOR_RESULTS') await this.invalidate(live)
+      throw error
+    }
     const generationId = live?.generationId ?? this.dependencies.sessions.nextGeneration(sessionId)
     const key = live?.key ?? `${sessionId}:${generationId}`
     if (live === undefined) live = await this.ensureSession(undefined, key, options, workspace, false, generationId, effort)
-    if (admission.kind === 'tool-results') {
-      live.bridge.stage(admission.results)
+    if (admission.kind === 'tool-results' && toolResults !== undefined) {
+      live.bridge.stage(toolResults)
       if (live.pending !== undefined) {
         live.pending = { ...live.pending, boundMessageId: admission.boundMessageId }
       }
@@ -306,7 +372,7 @@ export class ClaudeCodeAdapter extends LlmAdapter {
     live.dispatchedHash = admission.requestHash
     try {
       if (admission.kind === 'tool-results') await live.native.continueAfterResults()
-      else await live.native.sendUser({ text: admission.userText })
+      else await live.native.sendUser({ content: userContent ?? [] })
       const chunks = await this.collectTurn(live, admission, options.signal)
       if (live.pendingCalls.length > 0) live.phase = 'WAITING_FOR_RESULTS'
       else live.phase = 'READY'
@@ -320,6 +386,25 @@ export class ClaudeCodeAdapter extends LlmAdapter {
       await this.invalidate(live)
       throw error
     }
+  }
+
+  private prepareContent(
+    blocks: readonly OutgoingBlock[],
+    signal: AbortSignal | undefined,
+  ): Promise<readonly NativeContentBlock[]> {
+    return prepareNativeContent(blocks, this.dependencies.attachments(), signal)
+  }
+
+  private async prepareResults(
+    results: readonly ToolResultInput[],
+    signal: AbortSignal | undefined,
+  ): Promise<readonly NativeToolResult[]> {
+    const reader = this.dependencies.attachments()
+    return Promise.all(results.map(async (result) => ({
+      callId: result.callId,
+      content: await prepareNativeContent(result.content, reader, signal),
+      isError: result.isError,
+    })))
   }
 
   private async collectTurn(
@@ -378,6 +463,7 @@ export class ClaudeCodeAdapter extends LlmAdapter {
       home: this.dependencies.home.current(),
       resultWaitMs: this.dependencies.deadlines.resultWaitMs,
       ...(effort === undefined ? {} : { effort }),
+      ...(options.maxTokens === undefined ? {} : { maxOutputTokens: options.maxTokens }),
     })
     const native = await withDeadline(this.dependencies.runtime.start({
       workspace,
@@ -397,6 +483,7 @@ export class ClaudeCodeAdapter extends LlmAdapter {
       iterator: native.events[Symbol.asyncIterator](),
       model: options.model,
       effort,
+      maxOutputTokens: options.maxTokens,
       workspace,
       systemPrompt: prompt,
       toolsCanonical: canonicalJson(tools.tools),
@@ -449,11 +536,15 @@ export class ClaudeCodeAdapter extends LlmAdapter {
 
 function assertSupportedRequest(options: GenerateOptions): void {
   if (options.temperature !== undefined) refuseControl('temperature')
-  if (options.maxTokens !== undefined) refuseControl('maxTokens')
   if (options.stop !== undefined && options.stop.length > 0) refuseControl('stop')
-    if (options.purpose !== undefined && !AUXILIARY_PURPOSES.has(options.purpose)) {
-      throw pluginFailure('UNSUPPORTED_INPUT', 'This request purpose has no isolated mapping.')
+  if (options.maxTokens !== undefined) {
+    if (!Number.isSafeInteger(options.maxTokens) || options.maxTokens < 1) {
+      throw pluginFailure('UNSUPPORTED_INPUT', 'The maxTokens control must be a positive integer.')
     }
+  }
+  if (options.purpose !== undefined && String(options.purpose).trim() === '') {
+    throw pluginFailure('UNSUPPORTED_INPUT', 'The request purpose is empty.')
+  }
   // The agent loop always sends toolHistory. This route does not declare
   // toolUpdate, so the runtime already removed developer updates and sent the
   // current tool list. A developer message still fails below.
@@ -468,10 +559,20 @@ function assertSupportedRequest(options: GenerateOptions): void {
     if (!SUPPORTED_ROLES.has(message.role)) {
       throw pluginFailure('UNSUPPORTED_INPUT', `The message role "${message.role}" is not supported.`)
     }
+    const allowed = BLOCK_TYPES_BY_ROLE[message.role] ?? new Set<string>()
     for (const block of message.content) {
       const type = blockType(block)
-      if (!SUPPORTED_BLOCK_TYPES.has(type)) {
-        throw pluginFailure('UNSUPPORTED_INPUT', `The content type "${type}" is not supported.`)
+      if (type === 'file') {
+        throw pluginFailure(
+          'UNSUPPORTED_INPUT',
+          'The dsh runtime projects file attachments to text handles before adapter dispatch. A file block cannot reach the native session.',
+        )
+      }
+      if (!allowed.has(type)) {
+        throw pluginFailure(
+          'UNSUPPORTED_INPUT',
+          `The content type "${type}" is not supported in a ${message.role} message.`,
+        )
       }
     }
   }

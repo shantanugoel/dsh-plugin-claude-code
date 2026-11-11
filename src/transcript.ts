@@ -1,5 +1,8 @@
+import type { ImageAttachmentRef } from '@deepseek-ai/dsh-attachment'
+
 import { canonicalJson, contentHash } from './canonical.js'
 import { pluginFailure } from './errors.js'
+import { isNativeImageMediaType, type OutgoingBlock } from './images.js'
 import { parseReplayEnvelope, type ReplayV1 } from './replay.js'
 
 /** One frozen request snapshot. Later checks compare this value. They do not change it. */
@@ -8,13 +11,38 @@ export interface RequestSnapshot {
   readonly projectedContentHash: string
 }
 
-export interface CanonicalBlock {
-  readonly type: 'text' | 'reasoning' | 'tool-call'
-  readonly text: string
-  readonly id: string
-  readonly name: string
-  readonly arguments: string
-}
+/**
+ * One canonical content block. The canonical form holds an image by its
+ * durable attachment reference, not by request bytes. The `offloaded`
+ * projection flag is left out because an image-offload decision changes later
+ * request text, not the logged message identity.
+ */
+export type CanonicalBlock =
+  | {
+    readonly type: 'text'
+    readonly text: string
+    readonly id: ''
+    readonly name: ''
+    readonly arguments: ''
+  }
+  | {
+    readonly type: 'reasoning'
+    readonly text: string
+    readonly id: ''
+    readonly name: ''
+    readonly arguments: ''
+  }
+  | {
+    readonly type: 'tool-call'
+    readonly text: ''
+    readonly id: string
+    readonly name: string
+    readonly arguments: string
+  }
+  | {
+    readonly type: 'image'
+    readonly attachment: ImageAttachmentRef
+  }
 
 export interface CanonicalMessage {
   readonly role: string
@@ -46,20 +74,20 @@ export interface TranscriptState {
 
 export interface ToolResultInput {
   readonly callId: string
-  readonly text: string
+  readonly content: readonly OutgoingBlock[]
   readonly isError: boolean
 }
 
 export type Admission =
   | {
     readonly kind: 'first-user'
-    readonly userText: string
+    readonly userContent: readonly OutgoingBlock[]
     readonly requestHash: string
     readonly committed: readonly CanonicalMessage[]
   }
   | {
     readonly kind: 'next-user'
-    readonly userText: string
+    readonly userContent: readonly OutgoingBlock[]
     readonly requestHash: string
     readonly committed: readonly CanonicalMessage[]
     readonly boundMessageId: string
@@ -78,6 +106,8 @@ interface LooseBlock {
   readonly id?: unknown
   readonly name?: unknown
   readonly arguments?: unknown
+  readonly attachment?: unknown
+  readonly offloaded?: unknown
 }
 
 interface LooseMessage {
@@ -110,9 +140,27 @@ export function admitTranscript(input: {
     if (projected.some((message) => message.role === 'assistant' || message.role === 'tool')) {
       throw pluginFailure('REPLAY_STATE_INVALID', 'The first request contains an assistant message or a tool result.')
     }
+    const userIndex = firstUserIndex(projected)
+    for (let index = 0; index < userIndex; index += 1) {
+      const message = projected[index]
+      if (message?.role !== 'system') {
+        throw pluginFailure('UNSUPPORTED_INPUT', 'The first request can send only system messages before its user messages.')
+      }
+    }
+    for (let index = userIndex; index < projected.length; index += 1) {
+      if (projected[index]?.role !== 'user') {
+        throw pluginFailure('UNSUPPORTED_INPUT', 'The first request can send only user messages after its system prompt.')
+      }
+    }
+    const userContent = input.messages
+      .slice(userIndex)
+      .flatMap((message) => outgoingBlocks(message.content))
+    if (userContent.length === 0) {
+      throw pluginFailure('UNSUPPORTED_INPUT', 'The request has an empty user message.')
+    }
     return {
       kind: 'first-user',
-      userText: lastUserText(projected),
+      userContent,
       requestHash,
       committed: freezeMessages(projected),
     }
@@ -125,7 +173,8 @@ export function admitTranscript(input: {
   const boundMessageId = matchPublication(split.assistant, input.state.pending)
   const published = freezeMessage({ ...split.assistant, id: boundMessageId })
   if (input.waitingForResults) {
-    const results = toolSuffix(split.rest)
+    const rawSuffix = input.messages.slice(input.state.committed.length + 1)
+    const results = toolSuffix(rawSuffix)
     return {
       kind: 'tool-results',
       results,
@@ -134,12 +183,17 @@ export function admitTranscript(input: {
       boundMessageId,
     }
   }
-  if (split.rest.length !== 1 || split.rest[0]?.role !== 'user') {
-    throw pluginFailure('UNSUPPORTED_INPUT', 'The continuation needs one new user message.')
+  if (split.rest.length === 0 || split.rest.some((message) => message.role !== 'user')) {
+    throw pluginFailure('UNSUPPORTED_INPUT', 'The continuation needs one or more new user messages.')
+  }
+  const rawSuffix = input.messages.slice(input.state.committed.length + 1)
+  const userContent = rawSuffix.flatMap((message) => outgoingBlocks(message.content))
+  if (userContent.length === 0) {
+    throw pluginFailure('UNSUPPORTED_INPUT', 'The request has an empty user message.')
   }
   return {
     kind: 'next-user',
-    userText: textOf(split.rest[0]),
+    userContent,
     requestHash,
     committed: freezeMessages([...split.prefix, published, ...split.rest]),
     boundMessageId,
@@ -179,7 +233,7 @@ export function publicationFrom(input: {
     projectedContentHash: contentHash(input.blocks),
     nativeMessageIds: [...input.nativeMessageIds],
     replayHash: contentHash(envelope),
-    blocks: input.blocks.map((block) => ({ ...block })),
+    blocks: input.blocks.map((block) => freezeBlock(block)),
     callIds: [...input.callIds],
     boundMessageId: null,
   }
@@ -205,8 +259,91 @@ function projectBlock(block: LooseBlock): CanonicalBlock {
     }
     return { type: 'tool-call', text: '', id: block.id, name: block.name, arguments: block.arguments }
   }
+  if (block.type === 'image') {
+    return { type: 'image', attachment: imageRefOf(block.attachment) }
+  }
   const type = typeof block.type === 'string' ? block.type : 'unknown'
   throw pluginFailure('UNSUPPORTED_INPUT', `The content type "${type}" is not supported.`)
+}
+
+/** Read one message content as the blocks that this adapter sends natively. */
+function outgoingBlocks(blocks: readonly LooseBlock[]): OutgoingBlock[] {
+  return blocks.map((block) => {
+    if (block.type === 'text') {
+      if (typeof block.text !== 'string') throw pluginFailure('UNSUPPORTED_INPUT', 'A text block has no text.')
+      return { type: 'text', text: block.text }
+    }
+    if (block.type === 'image') {
+      const attachment = imageRefOf(block.attachment)
+      return block.offloaded === true
+        ? { type: 'image', attachment, offloaded: true }
+        : { type: 'image', attachment }
+    }
+    if (block.type === 'tool-call') {
+      throw pluginFailure('UNSUPPORTED_INPUT', 'A tool call cannot be sent as user content.')
+    }
+    if (block.type === 'reasoning') {
+      throw pluginFailure('UNSUPPORTED_INPUT', 'A reasoning block cannot be sent as user content.')
+    }
+    const type = typeof block.type === 'string' ? block.type : 'unknown'
+    throw pluginFailure('UNSUPPORTED_INPUT', `The content type "${type}" cannot be sent as user content.`)
+  })
+}
+
+function firstUserIndex(messages: readonly CanonicalMessage[]): number {
+  const index = messages.findIndex((message) => message.role === 'user')
+  if (index < 0) {
+    throw pluginFailure('UNSUPPORTED_INPUT', 'The request has no user text.')
+  }
+  return index
+}
+
+function imageRefOf(value: unknown): ImageAttachmentRef {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+    throw pluginFailure('UNSUPPORTED_INPUT', 'An image block has no attachment reference.')
+  }
+  const record = value as Record<string, unknown>
+  const attachmentId = record['attachmentId']
+  const mediaType = record['mediaType']
+  const bytes = record['bytes']
+  const width = record['width']
+  const height = record['height']
+  const name = record['name']
+  if (typeof attachmentId !== 'string' || attachmentId.trim() === '') {
+    throw pluginFailure('UNSUPPORTED_INPUT', 'An image attachment reference has no id.')
+  }
+  if (!isNativeImageMediaType(mediaType)) {
+    throw pluginFailure('UNSUPPORTED_INPUT', 'An image attachment reference has no supported media type.')
+  }
+  if (!isPositiveInteger(bytes) || !isPositiveInteger(width) || !isPositiveInteger(height)) {
+    throw pluginFailure('UNSUPPORTED_INPUT', 'An image attachment reference has invalid size metadata.')
+  }
+  const validName = typeof name === 'string' && name.trim() !== '' ? name : undefined
+  if (name !== undefined && validName === undefined) {
+    throw pluginFailure('UNSUPPORTED_INPUT', 'An image attachment reference has an invalid name.')
+  }
+  const original = originalDimensionsOf(record['originalDimensions'])
+  return {
+    attachmentId: attachmentId as ImageAttachmentRef['attachmentId'],
+    mediaType,
+    bytes,
+    width,
+    height,
+    ...(validName === undefined ? {} : { name: validName }),
+    ...(original === undefined ? {} : { originalDimensions: original }),
+  }
+}
+
+function originalDimensionsOf(value: unknown): { readonly width: number; readonly height: number } | undefined {
+  if (value === undefined) return undefined
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+    throw pluginFailure('UNSUPPORTED_INPUT', 'An image attachment reference has invalid original dimensions.')
+  }
+  const record = value as Record<string, unknown>
+  if (!isPositiveInteger(record['width']) || !isPositiveInteger(record['height'])) {
+    throw pluginFailure('UNSUPPORTED_INPUT', 'An image attachment reference has invalid original dimensions.')
+  }
+  return { width: record['width'], height: record['height'] }
 }
 
 function splitAtAssistant(messages: readonly CanonicalMessage[], prefixLength: number): {
@@ -246,7 +383,7 @@ function matchPublication(message: CanonicalMessage, pending: PendingPublication
   return message.id
 }
 
-function toolSuffix(messages: readonly CanonicalMessage[]): ToolResultInput[] {
+function toolSuffix(messages: readonly LooseMessage[]): ToolResultInput[] {
   if (messages.length === 0) {
     throw pluginFailure('TOOL_RESULT_MISMATCH', 'The tool-result suffix is empty.')
   }
@@ -254,36 +391,16 @@ function toolSuffix(messages: readonly CanonicalMessage[]): ToolResultInput[] {
     throw pluginFailure('UNSUPPORTED_INPUT', 'A user message cannot enter a tool-result suffix.')
   }
   return messages.map((message) => {
-    if (message.toolCallId === null || message.toolCallId.trim() === '') {
+    const toolCallId = message.toolCallId
+    if (typeof toolCallId !== 'string' || toolCallId.trim() === '') {
       throw pluginFailure('TOOL_RESULT_MISMATCH', 'A tool result has no call id.')
     }
-    const text = message.blocks.map((block) => {
-      if (block.type !== 'text') {
-        throw pluginFailure('UNSUPPORTED_INPUT', 'A tool result contains unsupported content.')
-      }
-      return block.text
-    }).join('')
-    return { callId: message.toolCallId, text, isError: message.isError }
-  })
-}
-
-function lastUserText(messages: readonly CanonicalMessage[]): string {
-  for (let index = messages.length - 1; index >= 0; index -= 1) {
-    const message = messages[index]
-    if (message?.role === 'user') return textOf(message)
-  }
-  throw pluginFailure('UNSUPPORTED_INPUT', 'The request has no user text.')
-}
-
-function textOf(message: CanonicalMessage): string {
-  const parts: string[] = []
-  for (const block of message.blocks) {
-    if (block.type !== 'text') {
-      throw pluginFailure('UNSUPPORTED_INPUT', 'The user message contains unsupported content.')
+    return {
+      callId: toolCallId,
+      content: outgoingBlocks(message.content),
+      isError: message.isError === true,
     }
-    parts.push(block.text)
-  }
-  return parts.join('')
+  })
 }
 
 function sameMessages(left: readonly CanonicalMessage[], right: readonly CanonicalMessage[]): boolean {
@@ -298,9 +415,23 @@ function freezeMessage(message: CanonicalMessage): CanonicalMessage {
   return {
     role: message.role,
     id: message.id,
-    blocks: message.blocks.map((block) => ({ ...block })),
+    blocks: message.blocks.map((block) => freezeBlock(block)),
     toolCallId: message.toolCallId,
     isError: message.isError,
     replayState: message.replayState === null ? null : JSON.parse(canonicalJson(message.replayState)) as unknown,
   }
+}
+
+function freezeBlock(block: CanonicalBlock): CanonicalBlock {
+  if (block.type === 'image') {
+    return {
+      type: 'image',
+      attachment: JSON.parse(canonicalJson(block.attachment)) as ImageAttachmentRef,
+    }
+  }
+  return { ...block }
+}
+
+function isPositiveInteger(value: unknown): value is number {
+  return typeof value === 'number' && Number.isSafeInteger(value) && value > 0
 }

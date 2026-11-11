@@ -20,7 +20,7 @@ export function projectCatalogModel(
     provider,
     id: info.value,
     name,
-    inputModalities: ['text'],
+    inputModalities: ['text', 'image'],
     ...(description === undefined || description === '' ? {} : { description }),
   }
 }

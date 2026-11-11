@@ -1,7 +1,25 @@
 import type { GenerateOptions } from '@deepseek-ai/dsh-llm'
 
 import { CLAUDE_CODE_SESSION_ROUTE } from '../src/route.js'
-import type { NativeEvent } from '../src/sdk-runtime.js'
+import type {
+  NativeContentBlock,
+  NativeEvent,
+  NativeToolResult,
+  NativeUserInput,
+} from '../src/sdk-runtime.js'
+
+/** Join the text of one native content list. Images show their media type. */
+export function contentText(content: readonly NativeContentBlock[]): string {
+  return content.map((block) => block.type === 'text' ? block.text : `[image ${block.mediaType}]`).join('')
+}
+
+export function inputText(input: NativeUserInput): string {
+  return contentText(input.content)
+}
+
+export function resultText(result: NativeToolResult): string {
+  return contentText(result.content)
+}
 
 export function textRequest(text = 'hello', sessionId = 'session-1'): GenerateOptions {
   return {

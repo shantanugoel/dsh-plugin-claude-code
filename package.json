@@ -1,6 +1,6 @@
 {
   "name": "dsh-plugin-claude-code",
-  "version": "0.1.2",
+  "version": "0.2.0",
   "private": true,
   "description": "DeepSeek Harness model plugin for one persistent official Claude Agent SDK session per dsh generation.",
   "type": "module",
@@ -44,6 +44,7 @@
   },
   "peerDependencies": {
     "@deepseek-ai/cordis": "~4.1.0",
+    "@deepseek-ai/dsh-attachment": "0.2.2-rc.1",
     "@deepseek-ai/dsh-compaction": "0.2.2-rc.1",
     "@deepseek-ai/dsh-llm": "0.2.2-rc.1",
     "@deepseek-ai/dsh-session": "0.2.2-rc.1"

@@ -78,7 +78,12 @@ export function translateTurn(events: readonly NativeEvent[], input: TranslateIn
   for (const event of events) {
     if (event.type === 'usage') {
       if (usage !== undefined) throw pluginFailure('MALFORMED_RESPONSE', 'The native response repeated its usage.')
-      usage = { inputTokens: event.inputTokens, outputTokens: event.outputTokens }
+      usage = {
+        inputTokens: event.inputTokens,
+        outputTokens: event.outputTokens,
+        ...(event.cacheReadTokens === undefined ? {} : { cacheReadTokens: event.cacheReadTokens }),
+        ...(event.cacheWriteTokens === undefined ? {} : { cacheWriteTokens: event.cacheWriteTokens }),
+      }
       continue
     }
     if (event.type === 'message-stop') {

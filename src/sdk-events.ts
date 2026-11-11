@@ -18,6 +18,8 @@ interface LooseAssistantMessage {
   readonly usage?: {
     readonly input_tokens?: unknown
     readonly output_tokens?: unknown
+    readonly cache_read_input_tokens?: unknown
+    readonly cache_creation_input_tokens?: unknown
   }
 }
 
@@ -42,7 +44,15 @@ export function eventsFromAssistant(message: LooseAssistantMessage): NativeEvent
   if (stopReason !== 'end_turn' && stopReason !== 'tool_use') return events
   const usage = message.usage
   if (typeof usage?.input_tokens === 'number' && typeof usage.output_tokens === 'number') {
-    events.push({ type: 'usage', inputTokens: usage.input_tokens, outputTokens: usage.output_tokens })
+    const cacheReadTokens = tokenCount(usage.cache_read_input_tokens)
+    const cacheWriteTokens = tokenCount(usage.cache_creation_input_tokens)
+    events.push({
+      type: 'usage',
+      inputTokens: usage.input_tokens,
+      outputTokens: usage.output_tokens,
+      ...(cacheReadTokens === undefined ? {} : { cacheReadTokens }),
+      ...(cacheWriteTokens === undefined ? {} : { cacheWriteTokens }),
+    })
   }
   events.push({ type: 'message-stop', messageId, stopReason })
   return events
@@ -90,4 +100,8 @@ function readId(extra: unknown, depth: number): string | undefined {
     if (typeof value === 'string' && value.trim() !== '') return value
   }
   return readId(record['_meta'], depth + 1)
+}
+
+function tokenCount(value: unknown): number | undefined {
+  return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0 ? value : undefined
 }

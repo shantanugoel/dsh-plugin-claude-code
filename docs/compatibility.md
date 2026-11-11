@@ -1,6 +1,6 @@
 # Compatibility record
 
-Review date: 2026-11-10.
+Review date: 2026-11-11.
 
 This record lists published package identities and the imports this plugin uses.
 A declaration check is not a live session test. Do not treat it as proof that a
@@ -31,12 +31,19 @@ for packages this repository installs.
 | `@deepseek-ai/cordis` | 4.1.0 | `sha512-CJrjNyBkKn1SfvBQUcgFYKFnLjS+uKrhdMsbHU60xabvi12d+xQ+IQSNlME5Z+B+4Zi6n4BDknKY94tEPeo47w==` |
 | `@deepseek-ai/schemastery` | 3.19.0 | `sha512-bDXoYQa7ghAhmdYD5VPlzKxEzJV/aKkz5l4V5h1u06z8GAPN1ROewSjvR9WiXhpa52E9fng8lpH5QdCRIQgnyQ==` |
 
-`@deepseek-ai/dsh-llm` and `@deepseek-ai/cordis` are peer dependencies. The host
-must supply those copies. `@deepseek-ai/schemastery` is a direct dependency at
-the same major range the host uses for settings. `@deepseek-ai/dsh-attachment`
-and `@deepseek-ai/dsh-package-manifest` are development dependencies. The
-published `dsh-llm` declarations import them. This plugin does not call them
-at runtime.
+`@deepseek-ai/dsh-llm`, `@deepseek-ai/dsh-attachment`, and `@deepseek-ai/cordis`
+are peer dependencies. The host must supply those copies.
+`@deepseek-ai/schemastery` is a direct dependency at the same major range the
+host uses for settings. `@deepseek-ai/dsh-package-manifest` is a development
+dependency. The published `dsh-llm` declarations import it.
+
+The plugin source has type-only imports from `@deepseek-ai/dsh-attachment`.
+The runtime reads the mounted attachment service through `ctx.get('attachments')`
+and does not import the package module. An image request needs that service. A
+profile without it accepts text and refuses an image before dispatch.
+
+The plugin source reads image request versions through the attachment service
+`readImageRequest` method. It does not read image bytes from the filesystem.
 
 `@deepseek-ai/dsh-session` and `@deepseek-ai/dsh-compaction` are peer
 dependencies at `0.2.2-rc.1`. The plugin reads `Session.header.cwd`. That field
@@ -58,7 +65,8 @@ The plugin source imports these public names:
 
 | Module | Names |
 | --- | --- |
-| `@deepseek-ai/dsh-llm` | `LlmAdapter`, `LlmError`, `resolveRetryPolicy`, `GenerateOptions`, `LlmModelInfo`, `LlmProviderInfo`, `LlmResolvedModelInfo`, `ResolvedRetryPolicy`, `StreamChunk`, `createUserMessage`, `ToolCallId` |
+| `@deepseek-ai/dsh-llm` | `LlmAdapter`, `LlmError`, `resolveRetryPolicy`, `GenerateOptions`, `LlmModelInfo`, `LlmProviderInfo`, `LlmResolvedModelInfo`, `LlmImageRequestPricing`, `ResolvedRetryPolicy`, `StreamChunk`, `createUserMessage`, `ToolCallId`, `offloadedImageText`, `requestImageHandleText` |
+| `@deepseek-ai/dsh-attachment` | `ImageAttachmentRef`, `ImageRequestTarget`, `RequestImageAttachment`, `AttachmentStore` (all type-only) |
 | `@deepseek-ai/dsh-session` | `SessionId`, `SessionStore`, `Session` |
 | `@deepseek-ai/dsh-compaction` | `toolPairingBalancedBefore`, `toolPairingBalancedAfter` |
 | `@deepseek-ai/cordis` | `Context` |
@@ -96,6 +104,15 @@ program and it does not start a process. The file declares these names:
 The presence of a name in the declaration file does not prove the running CLI
 applies that option. `src/official-session.ts` imports this package when
 `SdkNativeRuntime.start` runs. The offline suite does not call `start`.
+
+The image probe on 2026-11-11 started the installed CLI through the SDK. It used
+SDK 0.3.322 and CLI 2.1.319 with the subscription login. One streaming user
+message carried a synthetic PNG. One in-process MCP tool returned the same PNG.
+The model read the word in both cases. The probe made two inference requests.
+It used no dsh profile. See
+[the probe summary](evidence/sdk-image-probe-2026-11-11.json). It does not
+certify many images, image offload, image retention with thinking, or subagent
+image delivery.
 
 `src/sdk-plan.ts` builds the offline launch plan for one query, one event
 consumer, and one streaming input queue. A tool-call finish leaves that query
@@ -142,7 +159,7 @@ This is not a live diagnostic capture.
 The engine range is Node.js `>=24.9.0`. The checks below ran on Node.js
 `v26.13.0` and npm `11.20.0`. This run does not certify Node.js 24.9.0.
 
-Passed on 2026-11-10:
+Passed on 2026-11-10 and again on 2026-11-11 after the image work:
 
 - `npm ci` in a clean directory that contained only `package.json` and `package-lock.json`
 - `npm test`
@@ -152,7 +169,8 @@ Passed on 2026-11-10:
 
 The same `npm test`, `npm run check`, `npm run build`, and `npm run pack:check`
 commands passed again after the transcript, session-import, and catalog work.
-`pack:check` accepted 43 files. No license is selected. The suite does not read
+After the image work the suite has 76 tests and `pack:check` accepted 55 files.
+The package version is 0.2.0. No license is selected. The suite does not read
 Claude credentials and does not contact a model. `supportedModels()` is not
 called. A supplied catalog row uses its exact id. `prepareCall` keeps one
 configuration generation for the later stream. Production supplies no catalog.

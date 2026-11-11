@@ -20,6 +20,17 @@ Three changes to saved request data were rejected: removed thinking, a changed
 signature character, and a changed thinking character. The message hashes and
 references were updated in each changed case. The successful answer was retained.
 
+## SDK image probe
+
+[sdk-image-probe-2026-11-11.json](sdk-image-probe-2026-11-11.json) summarizes a
+direct Agent SDK probe on 2026-11-11. It used SDK 0.3.322 and Claude Code
+2.1.319 with the subscription login. One streaming user message carried a
+synthetic 480x160 PNG with the word `PANGOLIN7`. One in-process MCP tool
+returned the same PNG as a tool-result image item. The model read the word in
+both cases. The probe made two inference requests. It used a private temporary
+directory for the fixture and committed no account data. It did not run the
+plugin inside dsh and did not measure signed thinking retention.
+
 ## Limits
 
 - This was a direct `claude -p` probe, not the planned SDK plugin.

@@ -16,6 +16,7 @@ const required = [
   'dist/index.js',
   'dist/index.d.ts',
   'dist/adapter.js',
+  'dist/images.js',
   'dist/sdk-runtime.js',
   'dist/spend-gate.js',
 ]

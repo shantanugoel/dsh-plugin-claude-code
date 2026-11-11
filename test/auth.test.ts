@@ -24,7 +24,7 @@ import {
   ProductionSpendGate,
   type SpendProof,
 } from '../src/spend-gate.js'
-import { textRequest, textTurn } from './request.js'
+import { inputText, textRequest, textTurn } from './request.js'
 import { ScriptedNativeRuntime } from './scripted-runtime.js'
 import { RecordingRunner, SYNTHETIC_AUTH_STATUS, makeAdapter } from './support.js'
 
@@ -122,7 +122,7 @@ test('auth and spend refusals do not start the native runtime', async () => {
     spendGate: new EvidenceSpendGate(proof('binding'), NOW),
     runner: titleRunner,
   })
-  const titleError = await refuse(titleAdapter.model, { ...textRequest(), purpose: 'title' } as GenerateOptions)
+  const titleError = await refuse(titleAdapter.model, { ...textRequest(), purpose: 'session-title' } as GenerateOptions)
   assert.ok(titleError instanceof LlmError)
   assert.equal(titleError.code, 'BILLING_GUARD_UNAVAILABLE')
   assert.equal(titleRunner.calls.length, 1)
@@ -185,7 +185,7 @@ test('a valid test proof reaches only the scripted runtime', async () => {
   assert.equal(finish?.type, 'finish')
   if (finish?.type !== 'finish') return
   assert.equal(finish.reason.kind, 'stop')
-  assert.deepEqual(runtime.inputs, [{ text: 'hello' }])
+  assert.deepEqual(runtime.inputs.map(inputText), ['hello'])
   assert.equal(runtime.closeCount, 0)
 })
 

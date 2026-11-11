@@ -59,6 +59,7 @@ export interface SdkLaunchPlan {
   readonly promptSuggestions: false
   readonly permissionMode: 'dontAsk'
   readonly effort?: ClaudeEffort
+  readonly maxOutputTokens?: number
   readonly enableFileCheckpointing: false
   readonly resumeOmitted: true
   readonly continueConversation: false
@@ -88,6 +89,7 @@ export interface SdkLaunchInput {
   readonly home: string
   readonly resultWaitMs: number
   readonly effort?: ClaudeEffort
+  readonly maxOutputTokens?: number
 }
 
 /** Build the native session plan. Billing variables from the parent are absent. */
@@ -98,11 +100,18 @@ export function buildSdkLaunchPlan(input: SdkLaunchInput): SdkLaunchPlan {
   if (!Number.isFinite(input.resultWaitMs) || input.resultWaitMs < 1_000) {
     throw pluginFailure('INCOMPATIBLE_RUNTIME', 'The tool-result wait is below the MCP timeout floor.')
   }
+  if (input.maxOutputTokens !== undefined
+    && (!Number.isSafeInteger(input.maxOutputTokens) || input.maxOutputTokens < 1)) {
+    throw pluginFailure('UNSUPPORTED_INPUT', 'The maxTokens control must be a positive integer.')
+  }
   const env: Record<string, string> = {}
   for (const [name, value] of Object.entries(buildChildEnvironment(input.parentEnv, input.home))) {
     if (value !== undefined) env[name] = value
   }
   for (const [name, value] of Object.entries(SESSION_CONTROL_ENV)) env[name] = value
+  if (input.maxOutputTokens !== undefined) {
+    env['CLAUDE_CODE_MAX_OUTPUT_TOKENS'] = String(input.maxOutputTokens)
+  }
   assertIsolatedEnv(env)
   const mcpTools = input.tools.map((tool) => ({
     name: tool.nativeName,
@@ -133,6 +142,7 @@ export function buildSdkLaunchPlan(input: SdkLaunchInput): SdkLaunchPlan {
     promptSuggestions: false,
     permissionMode: 'dontAsk',
     ...(input.effort === undefined ? {} : { effort: input.effort }),
+    ...(input.maxOutputTokens === undefined ? {} : { maxOutputTokens: input.maxOutputTokens }),
     enableFileCheckpointing: false,
     resumeOmitted: true,
     continueConversation: false,

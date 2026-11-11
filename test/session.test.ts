@@ -17,9 +17,9 @@ import { SessionId, SessionStore } from '@deepseek-ai/dsh-session'
 import { interpretAuthStatus } from '../src/auth.js'
 import { assertWorkspaceAgreement, SessionHeaderWorkspace } from '../src/context.js'
 import { DEFAULT_DEADLINES } from '../src/deadlines.js'
-import type { NativeEvent, NativeRuntime, NativeSession, NativeSessionConfig } from '../src/sdk-runtime.js'
+import type { NativeEvent, NativeRuntime, NativeSession, NativeSessionConfig, NativeUserInput } from '../src/sdk-runtime.js'
 import { EvidenceSpendGate, type SpendProof } from '../src/spend-gate.js'
-import { textRequest, textTurn } from './request.js'
+import { inputText, textRequest, textTurn } from './request.js'
 import { ScriptedNativeRuntime } from './scripted-runtime.js'
 import { SYNTHETIC_AUTH_STATUS, makeAdapter } from './support.js'
 
@@ -76,8 +76,8 @@ test('two sessions use their header workspaces', async () => {
   assert.equal(runtime.starts[1]?.workspace, '/tmp/ws-b')
   assert.equal(runtime.starts[0]?.systemPrompt, 'Prompt A')
   assert.equal(runtime.starts[1]?.systemPrompt, 'Prompt B')
-  assert.deepEqual(runtime.sessions[0]?.inputs.map((input) => input.text), ['from-a'])
-  assert.deepEqual(runtime.sessions[1]?.inputs.map((input) => input.text), ['from-b'])
+  assert.deepEqual(runtime.sessions[0]?.inputs.map(inputText), ['from-a'])
+  assert.deepEqual(runtime.sessions[1]?.inputs.map(inputText), ['from-b'])
 })
 
 test('the session workspace wins over a different filesystem base', () => {
@@ -135,8 +135,8 @@ test('a recorded import starts a new generation and keeps the raw log', async ()
   })
   assert.equal(next.at(-1)?.type, 'finish')
   assert.equal(runtime.starts.length, 2)
-  assert.equal(runtime.sessions[1]?.inputs[0]?.text, imported)
-  assert.equal(runtime.sessions[1]?.inputs[0]?.text.includes(SIGNATURE), false)
+  assert.equal(inputText(runtime.sessions[1]?.inputs[0] as NativeUserInput), imported)
+  assert.equal(inputText(runtime.sessions[1]?.inputs[0] as NativeUserInput).includes(SIGNATURE), false)
   assert.equal(runtime.closeCount >= 1, true)
 })
 
@@ -202,7 +202,7 @@ test('a title call during a parked tool uses another native session', async () =
   assert.equal(title.at(-1)?.type, 'finish')
   assert.equal(delivered, false)
   assert.equal(runtime.starts.length, 2)
-  assert.deepEqual(runtime.sessions[1]?.inputs.map((input) => input.text), ['name this'])
+  assert.deepEqual(runtime.sessions[1]?.inputs.map(inputText), ['name this'])
   const finish = first.at(-1)
   const replayState = finish?.type === 'finish' ? finish.replayState : undefined
   const continued = await collect(model, {
@@ -233,7 +233,7 @@ test('a title call during a parked tool uses another native session', async () =
   assert.equal(continued.at(-1)?.type, 'finish')
   assert.equal(delivered, true)
   assert.equal(runtime.starts.length, 2)
-  assert.deepEqual(runtime.sessions[0]?.inputs.map((input) => input.text), ['hello'])
+  assert.deepEqual(runtime.sessions[0]?.inputs.map(inputText), ['hello'])
 })
 
 test('a second stream is busy while the first stream is open', async () => {

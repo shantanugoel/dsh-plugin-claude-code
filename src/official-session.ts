@@ -7,7 +7,9 @@ import { eventsFromAssistant, readToolUseId } from './sdk-events.js'
 import { zodShapeForTool } from './sdk-schema.js'
 import { DSH_MCP_SERVER, PINNED_SDK_VERSION } from './sdk-plan.js'
 import type {
+  NativeContentBlock,
   NativeEvent,
+  NativeImageMediaType,
   NativeSession,
   NativeSessionConfig,
   NativeUserInput,
@@ -18,6 +20,31 @@ interface SdkQuery {
   [Symbol.asyncIterator](): AsyncIterator<OfficialMessage>
 }
 
+interface SdkTextContent {
+  readonly type: 'text'
+  readonly text: string
+}
+
+interface SdkImageContent {
+  readonly type: 'image'
+  readonly source: {
+    readonly type: 'base64'
+    readonly media_type: NativeImageMediaType
+    readonly data: string
+  }
+}
+
+type SdkUserContent = string | (SdkTextContent | SdkImageContent)[]
+
+interface SdkUserMessage {
+  readonly type: 'user'
+  readonly message: {
+    readonly role: 'user'
+    readonly content: SdkUserContent
+  }
+  readonly parent_tool_use_id: null
+}
+
 interface OfficialMessage {
   readonly type?: string
   readonly subtype?: string
@@ -26,12 +53,22 @@ interface OfficialMessage {
   readonly tools?: readonly string[]
   readonly stop_reason?: string | null
   readonly is_error?: boolean
-  readonly usage?: { readonly input_tokens?: number; readonly output_tokens?: number }
+  readonly usage?: {
+    readonly input_tokens?: number
+    readonly output_tokens?: number
+    readonly cache_read_input_tokens?: number
+    readonly cache_creation_input_tokens?: number
+  }
   readonly message?: {
     readonly id?: string
     readonly content?: readonly Record<string, unknown>[]
     readonly stop_reason?: string | null
-    readonly usage?: { readonly input_tokens?: number; readonly output_tokens?: number }
+    readonly usage?: {
+      readonly input_tokens?: number
+      readonly output_tokens?: number
+      readonly cache_read_input_tokens?: number
+      readonly cache_creation_input_tokens?: number
+    }
   }
 }
 
@@ -57,7 +94,13 @@ export async function startOfficialSession(config: NativeSessionConfig): Promise
       }
       const result = await config.callTool(callId)
       return {
-        content: [{ type: 'text' as const, text: result.text }],
+        content: result.content.map((block) => block.type === 'text'
+          ? { type: 'text' as const, text: block.text }
+          : {
+            type: 'image' as const,
+            data: block.data,
+            mimeType: block.mediaType,
+          }),
         isError: result.isError,
       }
     },
@@ -160,7 +203,17 @@ async function consume(
       const inputTokens = message.usage?.input_tokens
       const outputTokens = message.usage?.output_tokens
       if (typeof inputTokens === 'number' && typeof outputTokens === 'number') {
-        queue.push({ type: 'usage', inputTokens, outputTokens })
+        queue.push({
+          type: 'usage',
+          inputTokens,
+          outputTokens,
+          ...(message.usage?.cache_read_input_tokens === undefined
+            ? {}
+            : { cacheReadTokens: message.usage.cache_read_input_tokens }),
+          ...(message.usage?.cache_creation_input_tokens === undefined
+            ? {}
+            : { cacheWriteTokens: message.usage.cache_creation_input_tokens }),
+        })
       }
       const stopReason = message.stop_reason === 'tool_use' ? 'tool_use' : 'end_turn'
       queue.push({ type: 'message-stop', messageId, stopReason })
@@ -171,7 +224,7 @@ async function consume(
 }
 
 function createInputQueue(): {
-  readonly messages: AsyncIterable<{ type: 'user'; message: { role: 'user'; content: string }; parent_tool_use_id: null }>
+  readonly messages: AsyncIterable<SdkUserMessage>
   push(input: NativeUserInput): Promise<void>
   close(): void
 } {
@@ -192,7 +245,7 @@ function createInputQueue(): {
           }
           yield {
             type: 'user' as const,
-            message: { role: 'user' as const, content: next.text },
+            message: { role: 'user' as const, content: sdkUserContent(next.content) },
             parent_tool_use_id: null,
           }
         }
@@ -210,6 +263,22 @@ function createInputQueue(): {
       wake?.()
     },
   }
+}
+
+/**
+ * Build the Messages API user content. A text-only input stays a string, which
+ * is the same shape the persistent input queue sent before image support.
+ */
+function sdkUserContent(content: readonly NativeContentBlock[]): SdkUserContent {
+  if (content.every((block) => block.type === 'text')) {
+    return content.map((block) => block.type === 'text' ? block.text : '').join('')
+  }
+  return content.map((block) => block.type === 'text'
+    ? { type: 'text' as const, text: block.text }
+    : {
+      type: 'image' as const,
+      source: { type: 'base64' as const, media_type: block.mediaType, data: block.data },
+    })
 }
 
 class EventQueue implements AsyncIterable<NativeEvent> {

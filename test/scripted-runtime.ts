@@ -51,7 +51,7 @@ export class ScriptedNativeSession implements NativeSession {
     if (this.closed) {
       throw new Error('The scripted session is closed.')
     }
-    const copy = { text: input.text }
+    const copy: NativeUserInput = { content: input.content.map((block) => ({ ...block })) }
     this.inputs.push(copy)
     this.runtime.inputs.push(copy)
     this.play(this.runtime.takeTurn())

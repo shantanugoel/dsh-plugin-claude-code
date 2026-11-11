@@ -84,6 +84,20 @@ test('the launch plan keeps one query and only the dsh MCP server', () => {
   }
   assert.equal(plan.mcpTimeoutMs, 3_600_000)
   assert.deepEqual(plan.allowedToolNames, plan.mcpToolNames.map((name) => `mcp__dsh__${name}`))
+  assert.equal(plan.maxOutputTokens, undefined)
+  assert.equal(plan.env['CLAUDE_CODE_MAX_OUTPUT_TOKENS'], undefined)
+  const withCap = buildSdkLaunchPlan({
+    workspace: '/tmp/workspace-a',
+    model: 'haiku',
+    systemPrompt: 'Use the host tools.',
+    tools: tools.tools,
+    parentEnv: { PATH: '/usr/bin' },
+    home: '/tmp/isolated-home',
+    resultWaitMs: 3_600_000,
+    maxOutputTokens: 256,
+  })
+  assert.equal(withCap.maxOutputTokens, 256)
+  assert.equal(withCap.env['CLAUDE_CODE_MAX_OUTPUT_TOKENS'], '256')
 })
 
 test('an admitted scripted session receives the launch plan and stays open', async () => {

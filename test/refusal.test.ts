@@ -11,7 +11,7 @@ import { retentionProofAccepted } from '../src/evidence.js'
 import { rejectBlockReplay } from '../src/replay.js'
 import { ProductionSpendGate, ScriptedSpendGate, type SpendGate } from '../src/spend-gate.js'
 import { blockKey } from '../src/stream.js'
-import { textRequest, textTurn } from './request.js'
+import { inputText, textRequest, textTurn } from './request.js'
 import { ScriptedNativeRuntime } from './scripted-runtime.js'
 import { makeAdapter } from './support.js'
 
@@ -42,7 +42,7 @@ test('production spend gate allows the scripted runtime to receive the prompt', 
     for await (const chunk of model.stream(textRequest())) chunks.push(chunk)
     assert.equal(chunks.at(-1)?.type, 'finish')
     assert.equal(runtime.starts.length, 1)
-    assert.deepEqual(runtime.inputs, [{ text: 'hello' }])
+    assert.deepEqual(runtime.inputs.map(inputText), ['hello'])
     assert.equal(calls.length, 0)
     assert.deepEqual(await model.listModels('claude-code-session'), [])
     const policy = model.providerRetryPolicy('claude-code-session')
@@ -70,7 +70,7 @@ test('an allowed test gate sends the user text only to the scripted runtime', as
     assert.equal(finish?.type, 'finish')
     if (finish?.type !== 'finish') return
     assert.equal(finish.reason.kind, 'stop')
-    assert.deepEqual(runtime.inputs, [{ text: 'hello' }])
+    assert.deepEqual(runtime.inputs.map(inputText), ['hello'])
     assert.equal(runtime.closeCount, 0)
     assert.equal(calls.length, 0)
   })
@@ -89,7 +89,7 @@ test('folded tool history does not block the prompt', async () => {
   for await (const chunk of model.stream(request)) chunks.push(chunk)
   assert.equal(chunks.at(-1)?.type, 'finish')
   assert.equal(runtime.starts.length, 1)
-  assert.deepEqual(runtime.inputs, [{ text: 'hello' }])
+  assert.deepEqual(runtime.inputs.map(inputText), ['hello'])
 })
 
 test('unsupported controls and content refuse before the runtime starts', async () => {
@@ -101,14 +101,22 @@ test('unsupported controls and content refuse before the runtime starts', async 
     assert.equal(error.code, 'UNSUPPORTED_INPUT')
     return true
   })
-  const withImage = textRequest()
-  withImage.messages = [{
+  const withFile = textRequest()
+  withFile.messages = [{
     role: 'user',
-    content: [{ type: 'image', attachment: { id: 'img-1' } }],
-  }] as unknown as typeof withImage.messages
-  await assert.rejects(model.stream(withImage)[Symbol.asyncIterator]().next(), (error: unknown) => {
+    content: [{
+      type: 'file',
+      attachment: {
+        attachmentId: 'sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef',
+        name: 'notes.txt',
+        bytes: 5,
+      },
+    }],
+  }] as unknown as typeof withFile.messages
+  await assert.rejects(model.stream(withFile)[Symbol.asyncIterator]().next(), (error: unknown) => {
     assert.ok(error instanceof LlmError)
     assert.equal(error.code, 'UNSUPPORTED_INPUT')
+    assert.equal(error.message.includes('projects file attachments'), true)
     return true
   })
   const unknownRole = textRequest()
@@ -135,7 +143,7 @@ test('the scripted runtime records calls and does not use the network', async ()
       model: 'claude-haiku-5-5',
       systemPrompt: 'prompt',
     })
-    await session.sendUser({ text: 'hello' })
+    await session.sendUser({ content: [{ type: 'text', text: 'hello' }] })
     session.emit({ type: 'message-stop', messageId: 'm1', stopReason: 'end_turn' })
     const iterator = session.events[Symbol.asyncIterator]()
     const event = await iterator.next()
@@ -145,7 +153,7 @@ test('the scripted runtime records calls and does not use the network', async ()
     const end = await iterator.next()
     assert.equal(end.done, true)
     assert.equal(runtime.starts.length, 1)
-    assert.deepEqual(runtime.inputs, [{ text: 'hello' }])
+    assert.deepEqual(runtime.inputs.map(inputText), ['hello'])
     assert.equal(runtime.closeCount, 1)
     assert.equal(calls.length, 0)
   })

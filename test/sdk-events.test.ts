@@ -24,6 +24,28 @@ test('an assistant message keeps empty thinking and its signature', () => {
   assert.equal(events.at(-1)?.type, 'message-stop')
 })
 
+test('assistant usage keeps cache read and write tokens', () => {
+  const events = eventsFromAssistant({
+    id: 'msg-1',
+    content: [{ type: 'text', text: 'answer' }],
+    stop_reason: 'end_turn',
+    usage: {
+      input_tokens: 10,
+      output_tokens: 4,
+      cache_read_input_tokens: 900,
+      cache_creation_input_tokens: 50,
+    },
+  })
+  const usage = events.find((event) => event.type === 'usage')
+  assert.deepEqual(usage, {
+    type: 'usage',
+    inputTokens: 10,
+    outputTokens: 4,
+    cacheReadTokens: 900,
+    cacheWriteTokens: 50,
+  })
+})
+
 test('a tool handler extra value yields its call id', () => {
   assert.equal(readToolUseId({ toolUseID: 'call-1' }), 'call-1')
   assert.equal(readToolUseId({ _meta: { tool_use_id: 'call-2' } }), 'call-2')

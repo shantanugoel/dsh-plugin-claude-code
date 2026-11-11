@@ -8,7 +8,7 @@ import { DEFAULT_DEADLINES } from '../src/deadlines.js'
 import { retentionProofAccepted } from '../src/evidence.js'
 import type { NativeEvent } from '../src/sdk-runtime.js'
 import { EvidenceSpendGate, type SpendProof } from '../src/spend-gate.js'
-import { textRequest, textTurn } from './request.js'
+import { inputText, textRequest, textTurn } from './request.js'
 import { ScriptedNativeRuntime } from './scripted-runtime.js'
 import { SYNTHETIC_AUTH_STATUS, makeAdapter } from './support.js'
 
@@ -75,6 +75,37 @@ function replayResponse(chunks: readonly StreamChunk[]): Record<string, unknown>
   return response as Record<string, unknown>
 }
 
+test('cache token counts reach the usage chunk', async () => {
+  const runtime = new ScriptedNativeRuntime()
+  runtime.enqueue({
+    events: [
+      { type: 'block-start', messageId: 'm1', index: 0, blockType: 'text' },
+      { type: 'text-delta', messageId: 'm1', index: 0, text: 'answer' },
+      { type: 'block-stop', messageId: 'm1', index: 0 },
+      {
+        type: 'usage',
+        inputTokens: 10,
+        outputTokens: 4,
+        cacheReadTokens: 900,
+        cacheWriteTokens: 50,
+      },
+      { type: 'message-stop', messageId: 'm1', stopReason: 'end_turn' },
+    ],
+  })
+  const { model } = makeAdapter({ runtime, spendGate: gate() })
+  const chunks = await collect(model, textRequest())
+  const usage = chunks.find((chunk) => chunk.type === 'usage')
+  assert.deepEqual(usage, {
+    type: 'usage',
+    usage: {
+      inputTokens: 10,
+      outputTokens: 4,
+      cacheReadTokens: 900,
+      cacheWriteTokens: 50,
+    },
+  })
+})
+
 test('one text response stores one finish and replay data', async () => {
   const runtime = new ScriptedNativeRuntime()
   runtime.enqueue(textTurn('answer'))
@@ -91,7 +122,7 @@ test('one text response stores one finish and replay data', async () => {
   assert.equal('blocks' in (finish.replayState ?? {}), false)
   const second = await collect(model, continueRequest('session-1', 'hello', first, 'next'))
   assert.equal(second.at(-1)?.type, 'finish')
-  assert.deepEqual(runtime.inputs, [{ text: 'hello' }, { text: 'next' }])
+  assert.deepEqual(runtime.inputs.map(inputText), ['hello', 'next'])
   assert.equal(runtime.starts.length, 1)
   assert.equal(runtime.closeCount, 0)
 })
@@ -164,6 +195,25 @@ test('a partial event and its completed snapshot publish one block', async () =>
   assert.equal(Array.isArray(nativeBlocks) ? nativeBlocks.length : 0, 1)
 })
 
+test('two leading user messages merge into one native prompt', async () => {
+  const runtime = new ScriptedNativeRuntime()
+  runtime.enqueue(textTurn('answer'))
+  const { model } = makeAdapter({ runtime, spendGate: gate() })
+  const request: GenerateOptions = {
+    ...textRequest('second', 'multi-user'),
+    messages: [
+      { role: 'user', content: [{ type: 'text', text: 'first' }] },
+      { role: 'user', content: [{ type: 'text', text: 'second' }] },
+    ] as GenerateOptions['messages'],
+  }
+  const chunks = await collect(model, request)
+  assert.equal(chunks.at(-1)?.type, 'finish')
+  assert.deepEqual(runtime.inputs[0]?.content, [
+    { type: 'text', text: 'first' },
+    { type: 'text', text: 'second' },
+  ])
+})
+
 test('a changed earlier message requires a new generation before another prompt', async () => {
   const runtime = new ScriptedNativeRuntime()
   runtime.enqueue(textTurn('answer'))
@@ -175,7 +225,7 @@ test('a changed earlier message requires a new generation before another prompt'
     assert.equal(error.code, 'REBASE_REQUIRED')
     return true
   })
-  assert.deepEqual(runtime.inputs, [{ text: 'hello' }])
+  assert.deepEqual(runtime.inputs.map(inputText), ['hello'])
   assert.equal(runtime.starts.length, 1)
 })
 
@@ -211,7 +261,7 @@ test('the assistant id binds once and a changed publication is refused', async (
     return true
   })
   assert.equal(runtime.starts.length, 1)
-  assert.deepEqual(runtime.inputs.map((input) => input.text), ['hello', 'next'])
+  assert.deepEqual(runtime.inputs.map(inputText), ['hello', 'next'])
 })
 
 test('missing or changed replay data is refused', async () => {
@@ -246,7 +296,7 @@ test('missing or changed replay data is refused', async () => {
     assert.equal(error.code, 'REPLAY_STATE_INVALID')
     return true
   })
-  assert.deepEqual(runtime.inputs, [{ text: 'hello' }])
+  assert.deepEqual(runtime.inputs.map(inputText), ['hello'])
 })
 
 test('prompt, tool, model, and workspace changes require a new generation', async () => {
@@ -285,7 +335,7 @@ test('prompt, tool, model, and workspace changes require a new generation', asyn
     return true
   })
   assert.equal(runtime.starts.length, 1)
-  assert.deepEqual(runtime.inputs, [{ text: 'hello' }])
+  assert.deepEqual(runtime.inputs.map(inputText), ['hello'])
 })
 
 test('abort closes the native session and invents no tool result', async () => {
@@ -334,7 +384,7 @@ test('a timeout after dispatch is not retried', async () => {
     return true
   })
   assert.equal(runtime.starts.length, 1)
-  assert.deepEqual(runtime.inputs, [{ text: 'hello' }])
+  assert.deepEqual(runtime.inputs.map(inputText), ['hello'])
 })
 
 test('a repeated dispatched request does not send a second prompt', async () => {
@@ -347,7 +397,7 @@ test('a repeated dispatched request does not send a second prompt', async () => 
     assert.equal(error.code, 'NATIVE_OUTCOME_UNKNOWN')
     return true
   })
-  assert.deepEqual(runtime.inputs, [{ text: 'hello' }])
+  assert.deepEqual(runtime.inputs.map(inputText), ['hello'])
   assert.equal(runtime.starts.length, 1)
 })
 

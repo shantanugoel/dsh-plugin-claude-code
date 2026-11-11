@@ -38,17 +38,41 @@ already on. Installation does not select a model or send a prompt.
 ## Use
 
 Start a new session. Select **Claude Code session** as the provider, then select
-a model. The model list comes from the installed Claude Code CLI.
+a model. The model list comes from the installed Claude Code CLI. A main session
+and a subagent session can each use a model on this route.
 
 The plugin disables Claude Code's built-in tools. dsh provides the tools and
 runs each call with its own sandbox and approvals.
 
+## Content support
+
+- **Text and images.** The route declares text and image input for each model.
+  A user message can contain PNG, JPEG, WebP, and GIF images. The plugin sends
+  each image as one request version with a longest edge of 1568 pixels and a
+  target of 4 MiB. A short text line before each image names the attachment and
+  its request size.
+- **Image tool results.** A tool result can contain text blocks and image
+  blocks. The plugin sends both as MCP tool-result content. A model can read a
+  screenshot or a rendered image from a dsh tool.
+- **File attachments.** dsh replaces each file block with a text handle that
+  names the read-only saved path. The model reads that path with the dsh file
+  tools. The plugin never receives file bytes.
+- **Image offload.** An image-offload event changes an old image to placeholder
+  text. The plugin reads no bytes for that occurrence.
+- **Output cap.** A dsh `maxTokens` control maps to the official
+  `CLAUDE_CODE_MAX_OUTPUT_TOKENS` environment control for that native session.
+
 ## Limits
 
-- The plugin accepts text input and text tool results only. It refuses images,
-  file attachments, and structured tool results.
+- The plugin does not remove old images from the live native session. A session
+  with a very large number of retained images can reach the provider image
+  limit. Start a recorded new generation in that case.
 - An edit to earlier messages, a model or effort change, a tool change, a
   workspace change, or a lost Claude process requires a new Claude session.
+- A session-title call works. A compaction or summary call that replays
+  conversation history returns `UNSUPPORTED_INPUT`, because a new native session
+  cannot import signed history. Record a context import to start a new
+  generation.
 - Your Claude plan limits apply. Extra usage charges are possible. The plugin
   does not block them.
 
@@ -59,5 +83,8 @@ If the model list is empty, run `claude auth status`. The output must show
 
 If the plugin reports that the Claude executable is not on `PATH`, install the
 official Claude Code CLI or add its directory to `PATH`. Restart dsh.
+
+If an image is refused, confirm that the dsh profile mounts the attachment
+service. A profile without that service still works for text.
 
 For design and test details, see [docs/design.md](docs/design.md).

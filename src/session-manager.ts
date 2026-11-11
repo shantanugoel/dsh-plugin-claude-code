@@ -27,6 +27,7 @@ export interface LiveGeneration {
   readonly iterator: AsyncIterator<NativeEvent>
   readonly model: string
   readonly effort: ClaudeEffort | undefined
+  readonly maxOutputTokens: number | undefined
   readonly workspace: string
   readonly systemPrompt: string
   readonly toolsCanonical: string

@@ -53,6 +53,24 @@ A model that reports effort support offers that model's levels. The selected
 level is fixed for the native generation. A later change returns
 `REBASE_REQUIRED`.
 
+Resolve every model with `inputModalities: ['text', 'image']`. The catalog entry
+uses the same value. An image-capable route receives ImageBlock values. A
+text-only route receives stable placeholder text from the runtime. Implement
+`imageRequestTarget` and `imageRequestPricing` for the exact request projection.
+The target caps the longest edge at 1568 pixels and the encoded bytes at 4 MiB.
+The price uses about one visual token for each 750 pixels.
+
+Map `maxTokens` to the official `CLAUDE_CODE_MAX_OUTPUT_TOKENS` child
+environment control. The exact value is part of the generation identity. A
+change returns `REBASE_REQUIRED`. The value is not a sampling field and must
+not be dropped. Reject a non-positive or non-integer value before dispatch.
+
+Accept every auxiliary `purpose` value that the harness declares. Each
+auxiliary call uses a separate native session with the same admission checks. A
+title request that carries one user message is supported. A summary or
+compaction request that carries assistant history returns `UNSUPPORTED_INPUT`
+because a new native session has no signed prefix to continue.
+
 Do not declare `systemPromptUpdate` or `toolUpdate` for the first release.
 The generation uses one fixed prompt and the current tool list. The agent loop
 always sends `toolHistory`. The runtime removes developer tool updates before
@@ -71,6 +89,8 @@ Map finishes to the minimum version's actual union:
 Emit exactly one finish and no later chunks for a dsh stream. Tool arguments are
 raw JSON strings in dsh. Reject malformed completed arguments before tool
 publication. A generation error invalidates any incomplete native response.
+Emit the usage chunk before the finish. Keep the cache read and cache write
+token counts when the native message reports them.
 
 ## SDK boundary
 
@@ -92,6 +112,12 @@ This interface is illustrative. Include the MCP bridge in `NativeSessionConfig`.
 Use one SDK event consumer for the process lifetime. Per-stream output queues
 subscribe to that consumer. Ending a dsh stream at a tool call must not call
 `return()` on, dispose, or close the native SDK query.
+
+`NativeUserInput` carries an ordered content list, not only a string. A text
+block maps to a Messages text block. An image block maps to a base64 image block
+with the media type of the request version. When the list holds text only, send
+one string. The tool handler returns MCP content items in the same way: text
+items keep their text, image items keep their base64 data and media type.
 
 Use a streaming input queue that remains open between dsh streams. Start its
 consumer before supplying input. Do not create a second SDK query for a tool
@@ -228,10 +254,24 @@ each staged result once when its exact handler arrives. Keep duplicate delivery
 and unknown IDs as errors. Returning an error result is permitted only when
 dsh has recorded that outcome.
 
-The first release supports text input and text tool results. It must reject
-unsupported images, files, resource blocks, and structured results before model
-dispatch or result release. Add each content type with a documented lossless
-mapping and tests. File-reference projection performed by dsh remains text.
+Content mapping for this route:
+
+| dsh block | Native mapping | Notes |
+| --- | --- | --- |
+| text | text block or text MCP item | Exact text, no trimming |
+| image | base64 image block or image MCP item | Request version with at most 1568 px on the longest edge and 4 MiB target |
+| file | none | The dsh runtime replaces it with a read-only path handle before dispatch |
+| reasoning, tool-call | assistant output only | Not valid user or tool-result content |
+
+An image is valid in a user message and in a tool-result message. It is not
+valid in a system or assistant message. The adapter writes one stable text line
+before each image. That line names the attachment and its request dimensions.
+An offloaded image becomes placeholder text and its bytes are not read. A
+missing attachment service returns `UNSUPPORTED_INPUT` before dispatch. Any
+other block type returns `UNSUPPORTED_INPUT` before dispatch or result release.
+The request snapshot keeps the durable attachment reference, not the request
+bytes. The `offloaded` flag is not part of the snapshot, because it changes
+projection text and not logged message identity.
 
 ## Workspace, prompts, and rebase
 
