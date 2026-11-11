@@ -1,81 +1,63 @@
 # dsh-plugin-claude-code
 
-A DeepSeek Harness model plugin for the user's Claude subscription. It will use
-the official Claude Agent SDK and the installed official Claude binary.
+Use your Claude subscription in DeepSeek Harness (dsh). The plugin runs the
+official Claude Code CLI through the official Agent SDK. It keeps one native
+Claude session for each dsh session. This preserves Claude's signed thinking
+across tool calls. dsh keeps control of the tools, the sandbox, and the
+approvals.
 
-Status: the package can install, type-check, test, build, and pack without
-Claude credentials. A first-party subscription login may send a prompt. The
-extra-usage lock is optional. Loading the plugin on dsh 0.2.2-rc.1 advertises
-no usable model until discovery supplies one. The offline suite does not start
-Claude. Live acceptance has not run.
-The minimum target is dsh 0.2.2-rc.1. No later dsh release was published on
-2026-11-10. Later releases need their own compatibility checks. The git tree
-does not include `dist/`.
+## Requirements
 
-The plugin will keep one native Claude session for each dsh session generation.
-An MCP handler will wait while dsh runs each tool. The same native session will
-continue with the result. This preserves native thinking without importing it
-into a fresh worker at each step.
+- DeepSeek Harness 0.2.2-rc.1. Later versions are untested but may work.
+- The official Claude Code CLI on `PATH`, signed in with a claude.ai
+  subscription.
 
-dsh will own the tools, sandbox, approvals, and durable session. The plugin will
-check that dsh's frozen transcript agrees with the native session before each
-continuation. A change to earlier input will require a recorded new generation.
+The plugin accepts only a first-party Claude subscription login. It refuses an
+API key, a Claude Console login, and a custom billing endpoint.
 
-Read these files in order:
+## Install
 
-1. [PLAN.md](docs/PLAN.md): work sequence, outputs, and completion criteria.
-2. [Design](docs/design.md): behavior, constraints, and known limits.
-3. [Compatibility](docs/compatibility.md): pinned packages and public imports.
-4. [Contracts](docs/contracts.md): modules, data, state machine, and errors.
-5. [Test plan](docs/test-plan.md): offline and live acceptance tests.
-6. [Decisions](docs/decisions.md): selected approach and open questions.
-7. [Evidence](docs/evidence/README.md): results and their limits.
-8. [Sources](docs/sources.md): package and documentation references.
+In Desktop app, you can install it with `github:shantanugoel/dsh-plugin-claude-code` as the plugin url.
 
-Current files:
+On CLI, you can install it with `dsh plugin --profile web add github:shantanugoel/dsh-plugin-claude-code` (Replace `web` with another profile name for other profiles)
 
-```text
-AGENTS.md                  Instructions for implementation agents
-docs/PLAN.md               Implementation work sequence
-docs/                      Design, contracts, tests, decisions, and evidence
-src/                       Plugin source
-test/                      Offline tests and the scripted runtime
-scripts/                   Package checks, the thinking checker, and the live-test refusal
-cordis.patch.yml           Bundle patch for route claude-code-session
-```
-
-Install locked dependencies, then run the offline checks. These commands do not
-need Claude credentials. They do not start a Claude process.
+For modifying/installing from a local copy, you can do the below.
 
 ```sh
+git clone https://github.com/shantanugoel/dsh-plugin-claude-code.git
+cd dsh-plugin-claude-code
 npm ci
-npm test
-npm run check
 npm run build
-npm run pack:check
 ```
 
-`npm run test:live` is a separate command. It refuses and exits with code 2.
-Do not add it to `test`, installation, or a build hook.
+From that directory, run `dsh plugin add "$PWD"`. In the desktop app, use
+**Settings → Plugins → Add plugin** and enter the absolute path. Restart dsh
+when it asks, and enable the plugin in **Settings → Plugins** if it is not
+already on. Installation does not select a model or send a prompt.
 
-Run the thinking checker alone with Python 3.10 or later:
+## Use
 
-```sh
-python3 scripts/verify_thinking.py \
-  tests/fixtures/thinking-roundtrip/session.jsonl \
-  tests/fixtures/thinking-roundtrip/output.ndjson \
-  --self-test
-```
+Start a new session. Select **Claude Code session** as the provider, then select
+a model. The model list comes from the installed Claude Code CLI.
 
-This command checks the fixture and rejects three changes to its thinking block.
-It starts no Claude process and makes no network request. The synthetic signature
-has no cryptographic validity. The original live measurement is described in
-[the evidence record](docs/evidence/README.md).
+The plugin disables Claude Code's built-in tools. dsh provides the tools and
+runs each call with its own sandbox and approvals.
 
-The extra-usage lock is optional. A first-party subscription login may send a
-prompt. An API key, a console login, and a changed billing endpoint stay
-refused. There is no paid-usage switch. The offline suite uses a scripted
-transport and does not start Claude.
+## Limits
 
-No Console key, OAuth replay, client spoofing, or direct Anthropic model client is
-part of this project. Do not install a different provider as an automatic fallback.
+- The plugin accepts text input and text tool results only. It refuses images,
+  file attachments, and structured tool results.
+- An edit to earlier messages, a model or effort change, a tool change, a
+  workspace change, or a lost Claude process requires a new Claude session.
+- Your Claude plan limits apply. Extra usage charges are possible. The plugin
+  does not block them.
+
+## Troubleshooting
+
+If the model list is empty, run `claude auth status`. The output must show
+`loggedIn: true`, `authMethod: "claude.ai"`, and `apiProvider: "firstParty"`.
+
+If the plugin reports that the Claude executable is not on `PATH`, install the
+official Claude Code CLI or add its directory to `PATH`. Restart dsh.
+
+For design and test details, see [docs/design.md](docs/design.md).
