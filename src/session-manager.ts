@@ -45,6 +45,10 @@ export interface LiveGeneration {
   dispatchedMessages: readonly CanonicalMessage[] | undefined
   /** Why this generation became invalid, when the reason is known. */
   invalidReason: GenerationChangeReason | undefined
+  /** Image occurrences that this native generation received. */
+  retainedImageCount: number
+  /** Encoded image bytes that this native generation received. */
+  retainedImageBytes: number
 }
 
 /**

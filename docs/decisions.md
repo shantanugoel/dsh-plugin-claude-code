@@ -603,3 +603,44 @@ Raw captures stay private in `.local/evidence/`.
 This does not prove plugin-in-dsh behavior, image support in a mid-turn message,
 or several trailing message boundaries. It also does not prove signed-thinking
 retention across a mid-turn message. Evidence: offline rows O74 to O78.
+
+## D32. Bound request images and start a recorded generation before the retained limit
+
+Decision: apply an image budget to every conversation request before the native
+boundary. Count the retained image occurrences in the complete dsh request and
+their exact base64 request-version bytes. Use `requiredImageOffload` from
+`@deepseek-ai/dsh-llm` with `representation: 'base64'`, 80 occurrences, and
+20 MiB. When the count is positive, throw `LlmError` with code
+`IMAGE_OFFLOAD_REQUIRED` and `failure.offloadImages` set to that count. Do not
+close the live generation and do not stage the tool-result batch. Track the
+image occurrences and encoded bytes that each live native generation receives.
+When the next dispatch would pass 80 occurrences or 20 MiB, start one recorded
+new generation with reason `image-budget`. Its import holds an attachment-id
+placeholder for each historical image. Send the current images to it. The
+`image-budget` record has no changed fields. These numbers are conservative
+adaptations of the provider documentation: about 100 images for a
+200000-token-context model, 5 MB for one image, and stricter resizing above 20
+images. They are not a measured provider limit. For a tool-result continuation,
+the completed outcomes are quoted in the import and a result image stays a
+placeholder. It does not reach the new generation.
+
+Reason: the native transcript keeps every image sent to a generation, while the
+adapter sends only new content. A dsh `image/offload` event changes projection
+text for a later request, but it cannot remove an image from the live native
+transcript. Without the request budget, one very image-heavy request can reach
+the provider limit with an opaque error. Without the generation threshold, a
+long session accumulates images until the provider rejects a request. The
+offload path already exists in dsh: a route throws the code,
+`dsh-compaction-image-offload` records the selection, and the step retries with
+placeholder text. The generation change reuses the recorded textual import from
+D21.
+
+Evidence: offline rows O82 to O88. The many-image probe on 2026-11-11 sent 100
+and 101 synthetic 1x1 images in two direct official-SDK turns. Both turns
+completed with subtype `success` and the answer `MANY-IMAGES-OK`. The selected
+model `claude-opus-5-5` reported `contextWindow` 1000000 and `maxOutputTokens`
+128000. The probe did not reach the documented limits: the about-100-image limit
+is for a 200000-token-context model, and the other-model limit is about 600.
+The probe used two inference requests. See
+[the many-image probe summary](evidence/many-image-probe-2026-11-11.json). No
+live dsh profile ran this budget or this generation change.

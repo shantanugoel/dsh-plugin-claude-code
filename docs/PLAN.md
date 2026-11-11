@@ -81,6 +81,13 @@ messages inside the same native turn before it releases the tool results (D31).
 A direct SDK probe on SDK 0.3.322 and CLI 2.1.319 measured this order. The probe
 did not run the plugin in dsh, and it did not measure an image.
 
+Status, 2026-11-11 (image budget, D32): the adapter bounds the image occurrences
+of one conversation request with `IMAGE_OFFLOAD_REQUIRED` and bounds the images
+of one native generation with a recorded `image-budget` generation. The offline
+suite has 175 tests with this change. A direct official-SDK probe sent 100 and
+101 synthetic images; both turns succeeded, so the provider image limit was not
+reached. No live dsh profile ran the request budget or the generation change.
+
 ## Fixed requirements
 
 - Minimum target: dsh 0.2.2-rc.1, the only published release. Keep the exact
@@ -329,8 +336,9 @@ not show that signed thinking reached Anthropic.
 
 ## M9. Multimodal content support
 
-Status on 2026-11-11: offline work is complete. The live SDK probe passed. A
-dsh profile acceptance run is not done.
+Status on 2026-11-11: offline work is complete. Two live SDK probes passed: the
+one-image probe and the many-image probe. A dsh profile acceptance run is not
+done. The many-image probe did not reach the provider image limit.
 
 - [x] Declare text and image input for catalog rows and resolved models.
 - [x] Send a user image as one exact request version with descriptor text, a
@@ -348,8 +356,22 @@ dsh profile acceptance run is not done.
 - [x] Run the official SDK probe with one user image and one tool-result image.
 - [ ] Run an image turn through an installed dsh profile and inspect the native
   request record. This needs the deployment scope from the user.
-- [ ] Measure many retained images, image offload on a long session, image
-  retention with signed thinking, and image delivery to a subagent.
+- [x] Bound each conversation request with an image count and encoded-byte
+  budget. Fail before dispatch with `IMAGE_OFFLOAD_REQUIRED` and
+  `failure.offloadImages`. A retry sends placeholder text for each offloaded
+  occurrence. Offline rows O67 to O70.
+- [x] Bound the images of one native generation. Start a recorded new
+  generation with reason `image-budget` before the retained threshold. The
+  import holds image placeholders only. Offline rows O70 to O73.
+- [x] Run an official-SDK many-image probe with 100 and 101 synthetic images.
+  Both turns succeeded for a 1000000-context model. The provider limit was not
+  reached.
+- [ ] Measure the exact provider image limit, the image byte limit, and the
+  behavior at 600 or more images. The 2026-11-11 probe did not reach them.
+- [ ] Run the image budget and the retained-image generation change in a live
+  dsh profile.
+- [ ] Measure a live dsh profile image offload retry, image retention with
+  signed thinking, and image delivery to a subagent.
 - [x] Support the compaction summary as a recorded flat-text import without
   signed history. The offline suite covers the import, the fresh native session,
   and the unavailable audit. This is not a live measurement.

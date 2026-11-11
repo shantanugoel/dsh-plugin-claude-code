@@ -99,7 +99,17 @@ runs each call with its own sandbox and approvals.
   names the read-only saved path. The model reads that path with the dsh file
   tools. The plugin never receives file bytes.
 - **Image offload.** An image-offload event changes an old image to placeholder
-  text. The plugin reads no bytes for that occurrence.
+  text. The plugin reads no bytes for that occurrence. A request above the
+  route image budget fails with `IMAGE_OFFLOAD_REQUIRED` and the number of
+  oldest images that must be offloaded. dsh records the offload and retries
+  the step.
+- **Image limits.** The plugin refuses a conversation request with more than
+  80 retained image occurrences or 20 MiB of encoded image bytes. A native
+  generation can hold the same amounts. Before the next turn would pass the
+  generation limit, the plugin starts a recorded new Claude session with a text
+  import that holds image placeholders and no image bytes. These values are
+  conservative adaptations of the provider documentation. They are not a
+  measured provider limit.
 - **Output cap.** A dsh `maxTokens` control maps to the official
   `CLAUDE_CODE_MAX_OUTPUT_TOKENS` environment control for that native session.
 - **Messages while a tool runs.** If you send a message while a tool is running,
@@ -148,9 +158,12 @@ message.
 
 ## Limits
 
-- The plugin does not remove old images from the live native session. A session
-  with a very large number of retained images can reach the provider image
-  limit. Start a recorded new generation in that case.
+- A live native session keeps every image that it receives. The plugin starts a
+  recorded new generation before the retained images reach its conservative
+  limit. The new session receives a text import with image placeholders and no
+  image bytes. A direct official-SDK probe sent 100 and 101 synthetic images and
+  both turns succeeded. The probe did not reach the provider image limit, so the
+  exact provider limit is not measured.
 - A prompt, tool, model, effort, output-cap, or workspace change starts a new
   Claude session with the new configuration and a recorded text import. The dsh
   session continues.

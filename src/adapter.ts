@@ -1,6 +1,8 @@
 import type { ImageAttachmentRef } from '@deepseek-ai/dsh-attachment'
 import {
+  IMAGE_OFFLOAD_REQUIRED_CODE,
   LlmAdapter,
+  LlmError,
   resolveRetryPolicy,
   type GenerateOptions,
   type LlmModelInfo,
@@ -19,10 +21,16 @@ import { withDeadline, type Deadlines } from './deadlines.js'
 import { claudeEffort, reasoningFor, type ClaudeEffort } from './effort.js'
 import { pluginFailure } from './errors.js'
 import {
+  addImageContentStats,
   claudeImageRequestPricing,
   claudeImageTarget,
+  exceedsGenerationImageLimit,
+  imageContentStats,
   prepareNativeContent,
+  requiredRequestImageCountOffload,
+  requiredRequestImageOffload,
   type ImageAttachmentReader,
+  type ImageContentStats,
   type OutgoingBlock,
 } from './images.js'
 import { McpBridge, mapToolNames } from './mcp-bridge.js'
@@ -421,6 +429,9 @@ export class ClaudeCodeAdapter extends LlmAdapter {
       )
       return
     }
+    // A count excess is exact without reading an attachment version. Refuse it
+    // before any image read. A parked tool batch stays open for the retry.
+    this.assertRequestImageCountBudget(options.messages)
     // Prepare every image and result before the native boundary. A refusal
     // here sends nothing, so the same step can retry after a repair. If tool
     // handlers are parked, release them with an error instead of leaving them
@@ -439,6 +450,22 @@ export class ClaudeCodeAdapter extends LlmAdapter {
       if (live.phase === 'WAITING_FOR_RESULTS') await this.invalidate(live, 'invalid')
       throw error
     }
+    // A request image budget failure names how many oldest occurrences dsh
+    // must offload. It is thrown before the native boundary, so a parked tool
+    // batch stays private to this generation and dsh can retry the step.
+    this.assertRequestImageBudget(options.messages)
+    const addedImages = preparedImageStats(userContent, toolResults)
+    if (exceedsGenerationImageLimit(
+      { count: live.retainedImageCount, bytes: live.retainedImageBytes },
+      addedImages,
+    )) {
+      // One recorded new generation has a text import with image placeholders.
+      // This keeps the provider request image count below its documented limit.
+      yield* this.recoverGeneration(options, workspace, sessionId, live, 'image-budget', effort)
+      return
+    }
+    live.retainedImageCount += addedImages.count
+    live.retainedImageBytes += addedImages.bytes
     if (admission.kind === 'tool-results' && toolResults !== undefined) {
       // The CLI surfaces queued user input in the same model request as the
       // tool result only when that input arrives before the result is
@@ -495,10 +522,15 @@ export class ClaudeCodeAdapter extends LlmAdapter {
     if (admission.kind !== 'first-user') {
       throw pluginFailure('REPLAY_STATE_INVALID', 'The first request did not admit as new user input.')
     }
+    this.assertRequestImageCountBudget(options.messages)
     const userContent = await this.prepareContent(admission.userContent, options.signal)
+    this.assertRequestImageBudget(options.messages)
+    const addedImages = preparedImageStats(userContent, undefined)
     const generationId = this.dependencies.sessions.nextGeneration(sessionId)
     const key = `${sessionId}:${generationId}`
     const live = await this.ensureSession(undefined, key, options, workspace, false, generationId, effort)
+    live.retainedImageCount = addedImages.count
+    live.retainedImageBytes = addedImages.bytes
     yield* this.dispatchTurn(live, admission, options, () => live.native.sendUser({ content: userContent }))
   }
 
@@ -530,13 +562,18 @@ export class ClaudeCodeAdapter extends LlmAdapter {
       }),
       ...(changedFields === undefined ? {} : { changedFields }),
     })
+    this.assertRequestImageCountBudget(options.messages)
     const pendingContent = plan.pendingUserContent.length === 0
       ? []
       : await this.prepareContent(plan.pendingUserContent, options.signal)
+    this.assertRequestImageBudget(options.messages)
+    const addedImages = preparedImageStats(pendingContent, undefined)
     if (replaced !== undefined) await this.dependencies.sessions.closeKey(replaced.key)
     const generationId = this.dependencies.sessions.nextGeneration(sessionId)
     const key = `${sessionId}:${generationId}`
     const live = await this.ensureSession(undefined, key, options, workspace, false, generationId, effort)
+    live.retainedImageCount = addedImages.count
+    live.retainedImageBytes = addedImages.bytes
     const admission: Admission = {
       kind: 'recovered',
       requestHash: plan.requestHash,
@@ -686,9 +723,38 @@ export class ClaudeCodeAdapter extends LlmAdapter {
       dispatchedHash: undefined,
       dispatchedMessages: undefined,
       invalidReason: undefined,
+      retainedImageCount: 0,
+      retainedImageBytes: 0,
     }
     this.dependencies.sessions.insert(created)
     return created
+  }
+
+  /**
+   * Refuse a count excess before any attachment read. The count budget does
+   * not depend on an image size, so this result is exact.
+   */
+  private assertRequestImageCountBudget(messages: GenerateOptions['messages']): void {
+    this.refuseImageOffload(requiredRequestImageCountOffload(messages))
+  }
+
+  /**
+   * Refuse a request whose retained image occurrences or encoded bytes exceed
+   * the route request budget. dsh records an image/offload selection for the
+   * named count and retries the step. A retry sends placeholder text for each
+   * offloaded occurrence, so the count is smaller on the next attempt.
+   */
+  private assertRequestImageBudget(messages: GenerateOptions['messages']): void {
+    this.refuseImageOffload(requiredRequestImageOffload(messages))
+  }
+
+  private refuseImageOffload(offloadImages: number): void {
+    if (offloadImages === 0) return
+    throw new LlmError(
+      `The request retains more images than this route sends at once. Offload ${offloadImages} more oldest image occurrence${offloadImages === 1 ? '' : 's'} and retry.`,
+      IMAGE_OFFLOAD_REQUIRED_CODE,
+      { offloadImages },
+    )
   }
 
   private async invalidate(live: LiveGeneration, reason: GenerationChangeReason): Promise<void> {
@@ -860,6 +926,16 @@ function changedConfigurationFields(
   if (live.systemPrompt !== prompt) changed.push('systemPrompt')
   if (live.toolsCanonical !== toolsCanonical) changed.push('tools')
   return changed
+}
+
+function preparedImageStats(
+  content: readonly NativeContentBlock[] | undefined,
+  results: readonly NativeToolResult[] | undefined,
+): ImageContentStats {
+  let stats: ImageContentStats = { count: 0, bytes: 0 }
+  if (content !== undefined) stats = addImageContentStats(stats, imageContentStats(content))
+  for (const result of results ?? []) stats = addImageContentStats(stats, imageContentStats(result.content))
+  return stats
 }
 
 function blockType(block: { readonly type?: unknown }): string {

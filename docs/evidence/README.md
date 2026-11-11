@@ -31,6 +31,18 @@ both cases. The probe made two inference requests. It used a private temporary
 directory for the fixture and committed no account data. It did not run the
 plugin inside dsh and did not measure signed thinking retention.
 
+## Many-image probe
+
+[many-image-probe-2026-11-11.json](many-image-probe-2026-11-11.json) summarizes a
+direct Agent SDK probe on 2026-11-11 for issue #9. It used SDK 0.3.322 and Claude
+Code 2.1.319 with the first-party subscription route. Two streaming user
+messages carried 100 and 101 synthetic 1x1 PNG images. Both turns completed with
+subtype success and the answer `MANY-IMAGES-OK`. The result message reported
+`contextWindow` 1000000 and `maxOutputTokens` 128000 for the selected model
+`claude-opus-5-5`. The probe made two inference requests. It did not reach the
+documented request image limits. Thus, it does not measure the exact provider
+image limit. The raw capture is private and is not committed.
+
 ## Install distribution check
 
 [install-2026-11-11.json](install-2026-11-11.json) records the issue #1 checks on

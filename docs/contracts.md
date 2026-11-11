@@ -23,6 +23,7 @@ Planned source files:
 | `src/adapter.ts` | `LlmAdapter`, preparation, catalog, stream entry |
 | `src/sdk-runtime.ts` | Official SDK process and input queue |
 | `src/session-manager.ts` | Session map, generation locks, and state |
+| `src/images.ts` | Request versions, image target and price, request image budget, and generation image threshold |
 | `src/capacity.ts` | Measured context capacity cache and the documented fallback |
 | `src/transcript.ts` | Frozen input validation, projection, and hashes |
 | `src/replay.ts` | Versioned replay data, generation-change records, and consistency checks |
@@ -75,6 +76,22 @@ text-only route receives stable placeholder text from the runtime. Implement
 `imageRequestTarget` and `imageRequestPricing` for the exact request projection.
 The target caps the longest edge at 1568 pixels and the encoded bytes at 4 MiB.
 The price uses about one visual token for each 750 pixels.
+
+Apply an image budget to every conversation request before dispatch. Count the
+retained ImageBlock occurrences in the complete derived request and their exact
+base64 request-version bytes. The route cache keeps each version size after its
+first read; an unread occurrence uses its durable file byte size as a
+deterministic estimate. The budget is 80 occurrences and 20 MiB of encoded
+bytes. Use `requiredImageOffload` from `@deepseek-ai/dsh-llm` with
+`representation: 'base64'`. When the number is positive, throw `LlmError` with
+code `IMAGE_OFFLOAD_REQUIRED` and `failure.offloadImages` equal to that number.
+Throw it before the native boundary, before the tool-result batch is staged,
+and before the native session closes. A count excess is exact before any
+attachment version read; check it first with a one-byte version length. dsh
+records one `image/offload` event for that many oldest retained occurrences and
+retries the step. A retry sends placeholder text for each offloaded occurrence
+and reads no bytes for it. Do not apply this budget to a summary import, which
+sends no image bytes.
 
 Map `maxTokens` to the official `CLAUDE_CODE_MAX_OUTPUT_TOKENS` child
 environment control. The exact value is part of the generation identity. A
@@ -348,6 +365,14 @@ The recorded import has these rules:
   the recovery evidence.
 - A `configuration-change` record has a non-empty `changedFields` list. The
   order is model, effort, output cap, workspace, system prompt, and tools.
+- An `image-budget` record has no changed fields. Start it before a dispatch
+  would put the live generation above 80 retained image occurrences or 20 MiB
+  of retained encoded image bytes. The new generation receives the recorded
+  text import with an attachment-id placeholder for each historical image, then
+  the current user images. Its retained counters start at the current image
+  values. For a tool-result continuation the import quotes the completed
+  outcomes; a result image stays a placeholder and does not reach the new
+  generation.
 
 Use runtime validation for this data. Add response grouping and ordering fields
 as needed; they must remain lossless JSON. Do not recursively embed earlier
@@ -426,6 +451,13 @@ other block type returns `UNSUPPORTED_INPUT` before dispatch or result release.
 The request snapshot keeps the durable attachment reference, not the request
 bytes. The `offloaded` flag is not part of the snapshot, because it changes
 projection text and not logged message identity.
+
+Track the image occurrences and encoded bytes that each native generation
+receives. The values are on the live generation record. Add the prepared image
+blocks before a dispatch and reset them when a new generation starts. The
+generation threshold is 80 occurrences and 20 MiB. These values and the request
+budget are adapter constants. They are below the documented provider limits.
+They are not a measured provider boundary.
 
 ## Workspace, prompts, and rebase
 
@@ -536,6 +568,13 @@ authentication headers, account identities, email addresses, and long opaque
 values before the message leaves the plugin. Bound the message length. Put a
 usable HTTP status on the failure when the native result reports one. An
 unreadable turn error is non-retryable.
+
+The image request budget uses the dsh-llm code `IMAGE_OFFLOAD_REQUIRED`, not a
+plugin code. Set `failure.offloadImages` to the positive count from
+`requiredImageOffload`. `dsh-compaction-image-offload` reads that code and count,
+records an `image/offload` event, and retries the step or the summary call. The
+plugin keeps the live generation and any parked tool batch. A missing count or a
+count of zero does not select an offload.
 
 An abort yields dsh's `aborted` finish and closes the native generation. Do not
 send a fabricated tool result to make the SDK stop. Close gracefully, then end

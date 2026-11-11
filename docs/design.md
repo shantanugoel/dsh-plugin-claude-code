@@ -16,6 +16,15 @@ summary call is a deterministic textual import in a separate native session.
 The offline suite covers both paths. No live dsh token meter and no live
 compaction summary were measured.
 
+On 2026-11-11 the adapter also bounds the images of one request and the images
+of one native generation. A request above the route image budget fails with
+`IMAGE_OFFLOAD_REQUIRED` before dispatch, so dsh can offload the oldest
+occurrences and retry. A generation that would pass its retained-image
+threshold starts one recorded new generation with reason `image-budget`. The
+recorded import holds image placeholders only. A direct official-SDK probe sent
+100 and 101 synthetic images and both turns succeeded. It did not reach the
+provider limit. The offline suite covers both bounds.
+
 Use one stateful `LlmAdapter` with one persistent official Claude Agent SDK
 session for each dsh session generation. The SDK must run the user's installed,
 unmodified official Claude binary. Use an MCP bridge to stop Claude at each tool
@@ -58,6 +67,15 @@ synthetic PNG in the streaming user message. A second probe returned the same
 PNG from an in-process MCP tool. The model read the word in both cases. See
 [the image probe summary](evidence/sdk-image-probe-2026-11-11.json). The probe
 did not run the plugin inside dsh and did not test image retention with thinking.
+
+On 2026-11-11 a second direct official-SDK probe measured a many-image turn. It
+used the same SDK and CLI versions. Two streaming user messages carried 100 and
+101 synthetic 1x1 PNG images. Both turns completed with subtype `success` and
+the model answered. The result message reported `contextWindow` 1000000 and
+`maxOutputTokens` 128000 for the selected model `claude-opus-5-5`. The probe did
+not reach the documented request image limits, so it does not measure the exact
+provider limit. See [the many-image probe
+summary](evidence/many-image-probe-2026-11-11.json).
 
 On 2026-11-11 the capacity path used no new inference. A declaration review of
 SDK 0.3.322 found `ModelUsage.contextWindow` and `ModelUsage.maxOutputTokens` on
@@ -232,6 +250,33 @@ These values match the provider vision guidance. A dsh file block never reaches
 the adapter: the runtime replaces it with a read-only path handle. An offloaded
 image becomes placeholder text and no bytes are read.
 
+Bound the images of the complete dsh request before the native boundary. Count
+every retained image occurrence and its exact base64 request-version bytes. The
+process remembers each version size after its first read. Until then it uses
+the durable file byte size as a deterministic estimate. The budget is 80
+occurrences and 20 MiB of encoded bytes. These values are conservative
+adaptations of the provider documentation: about 100 images for a
+200000-token-context model, 5 MB for one image, and stricter resizing above 20
+images. They are not a measured provider limit. When the request is above the
+budget, throw `LlmError` with code `IMAGE_OFFLOAD_REQUIRED` and
+`failure.offloadImages` set to the number of oldest retained occurrences that
+must be offloaded. The count excess is exact before any attachment version is
+read. The byte excess is checked after the version sizes are known. The dsh
+image-offload plugin records one `image/offload` event and retries the step.
+The live native generation stays open. The retry sends placeholder text for each
+offloaded occurrence and reads no bytes for it. The request budget does not
+apply to a summary import, because that import sends no image bytes and no image
+blocks.
+
+Bound the images that one native generation receives. Track the count and the
+encoded bytes of every image block sent into the live generation. Before a
+dispatch, add the current images. If the sum is above 80 occurrences or 20 MiB
+of encoded bytes, start one new native generation with reason `image-budget`
+(see section 6). The new generation receives the recorded text import, which
+holds an attachment-id placeholder for every historical image, and then the
+current user images. Its counters start at the current image count. The dsh
+request does not change.
+
 Use a sufficient MCP timeout. Disable background tool handling. A timeout,
 interruption, truncated response, or uncertain delivery invalidates the live
 generation. Do not fabricate a tool result or execute an uncertain tool again.
@@ -365,13 +410,21 @@ continues earlier conversation, recover the session automatically:
    releases no old MCP handler.
 5. Store a `generationChange` record in the replay data of the successful turn.
    The record holds the reason (`abort`, `timeout`, `process-loss`, `restore`,
-   `fork`, `configuration-change`, or `invalid`), the replaced generation and
-   CLI session ids when known, the imported message count, the imported prefix
-   hash, and the timestamp. The dsh log keeps this record.
+   `fork`, `configuration-change`, `image-budget`, or `invalid`), the replaced
+   generation and CLI session ids when known, the imported message count, the
+   imported prefix hash, and the timestamp. The dsh log keeps this record.
 6. A configuration change also records the changed fields in a stable order:
    model, effort, output cap, workspace, system prompt, and tools. The new
    native session receives the new values. An earlier-prefix edit still returns
    `REBASE_REQUIRED` before any new generation starts.
+7. An image-budget change records reason `image-budget` with no changed fields.
+   It does not change the configuration. The adapter starts it when the next
+   native turn would put the live generation above its conservative retained
+   image limit. The import has image placeholders only, and the new generation
+   receives the current user images. The dsh session continues. For a
+   tool-result continuation, the completed outcomes are quoted in the import.
+   A tool-result image becomes a placeholder and does not reach the new
+   generation.
 
 The compaction service records the replacement surface. The adapter only
 produces the summary text, as a recorded textual import (see section 5). The next
@@ -560,6 +613,12 @@ summary call, the continuation after a replacement surface, the dsh token meter,
 and a model switch after compaction are offline paths only. They need a live dsh
 profile test. The summary path is a textual import with no signed history. It
 does not keep the native signed prefix across the compaction.
+
+The image request budget and the retained-image generation threshold are
+offline-tested only. The many-image probe did not reach the provider image
+limit. The exact provider limit, the behavior at 600 or more images, and the
+image byte limit remain unmeasured. The 80-image and 20 MiB values are
+conservative adapter constants, not a provider boundary.
 
 It does not establish that fresh-process replay or a relay can never work.
 Those paths are outside this design. The existing measurements support one

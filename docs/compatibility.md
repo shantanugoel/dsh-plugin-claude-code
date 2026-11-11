@@ -148,6 +148,12 @@ It used no dsh profile. See
 certify many images, image offload, image retention with thinking, or subagent
 image delivery.
 
+A second direct-SDK probe on 2026-11-11 used the same SDK/CLI pair. It sent one
+user message with 100 synthetic 1x1 images and one with 101. Both turns
+completed with subtype `success`. The selected model reported `contextWindow`
+1000000 and `maxOutputTokens` 128000. The probe did not reach the provider image
+limit. See [the many-image probe summary](evidence/many-image-probe-2026-11-11.json).
+
 `src/sdk-plan.ts` builds the offline launch plan for one query, one event
 consumer, and one streaming input queue. A tool-call finish leaves that query
 open. The plan sets the session workspace, the dsh prompt as a custom system
@@ -253,15 +259,15 @@ work, the suite had 117 tests. After the context-capacity and compaction-summary
 work the suite had 135 tests. The new tests use the scripted runtime. They do
 not start the Claude binary and they do not measure a context window. After the
 session-cleanup work the suite had 146 tests. After the auxiliary-release work
-the suite had 150 tests. After the model-metadata work the suite had 152 tests. After the issue #13 smoke fixes the suite has 168 tests.
-The packed file list has 63 files.
-The `npm pack --dry-run` check on 2026-11-11 used a temporary npm cache, because
-the default npm cache in this environment has root-owned entries and `npm pack`
-cannot write to it. The package version is 0.2.0. No license is selected. The
-suite does not read Claude credentials and does not contact a model.
-`supportedModels()` is not called. A supplied catalog row uses its exact id.
-`prepareCall` keeps one configuration generation for the later stream.
-Production supplies no catalog.
+the suite had 150 tests. After the model-metadata work the suite had 152 tests.
+After the issue #13 smoke fixes the suite had 168 tests. After the image-budget
+work the suite has 175 tests. A separate direct-SDK many-image probe on
+2026-11-11 is a live check; its summary is under `docs/evidence/`. The packed
+file list has 63 files. The `npm pack --dry-run` check on 2026-11-11 used a
+temporary npm cache, because the default npm cache in this environment has
+root-owned entries and `npm pack` cannot write to it. The package version is
+0.2.0. No license is selected. The suite does not read Claude credentials and
+does not contact a model. `supportedModels()` is not called.
 
 `npm run test:live` exits with code 2. It starts no Claude process. `test`,
 `check`, `build`, and `pack:check` do not call it. The package has no

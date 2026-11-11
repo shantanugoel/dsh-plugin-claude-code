@@ -2,8 +2,8 @@
 
 Use three test layers. Keep the result of each layer separate.
 
-Offline status on 2026-11-11: the Node suite covers rows O01 through O78 with
-synthetic data and the scripted runtime, and 168 tests pass. The dsh 0.2.2-rc.1
+Offline status on 2026-11-11: the Node suite covers rows O01 through O88 with
+synthetic data and the scripted runtime, and 175 tests pass. The dsh 0.2.2-rc.1
 LLM service, session store, and compaction balance functions are loaded in that
 suite. The real dsh LLM runtime is mounted for file and image projection tests
 and for the native error finish test. The agent loop is not driven. No offline
@@ -17,19 +17,21 @@ O62 to O66 cover the context-capacity cache and the flat-text compaction summary
 import. Rows O67 to O69 cover session-disposal cleanup and the auth acceptance
 cache. Rows O70 and O71 cover the auxiliary session release. Rows O72 and O73
 cover the resolved model display name and the absent default effort. Rows O74 to
-O78 cover trailing user content inside a waiting tool turn. Rows O79 to O81 cover the
-live-shaped tool-turn usage event fold, the MCP-qualified native tool name, and
-the split assistant message block indexes found in the issue #13 smoke run. They
-are offline tests. No live model request measured the rollover, a provider error, a
-configuration change, a live token meter, a live dsh compaction, or an image in
-a trailing mid-turn message, and the tests claim no signed-thinking retention
-across any rollover or import.
+O78 cover trailing user content inside a waiting tool turn. Rows O79 to O81 cover
+the live-shaped tool-turn transport shapes. Rows O82 to O88 cover the request
+image budget, the offload retry, and the retained-image generation threshold.
+They are offline tests. No live model request measured the rollover, a provider
+error, a configuration change, a live token meter, a live dsh compaction, or the
+provider image limit, and the tests claim no signed-thinking retention across any
+rollover or import.
 
-A separate live probe on 2026-11-11 used the official SDK 0.3.322 and Claude
-Code 2.1.319. It read one synthetic image from a user message and one synthetic
-image from an MCP tool result. See
-[the probe summary](evidence/sdk-image-probe-2026-11-11.json). It did not run
-the plugin in dsh.
+Two separate live probes on 2026-11-11 used the official SDK 0.3.322 and Claude
+Code 2.1.319. The first probe read one synthetic image from a user message and
+one synthetic image from an MCP tool result. See
+[the image probe summary](evidence/sdk-image-probe-2026-11-11.json). The second
+probe sent 100 and 101 synthetic images. See
+[the many-image probe summary](evidence/many-image-probe-2026-11-11.json). Neither
+probe ran the plugin in dsh.
 
 1. Offline unit tests use synthetic data and a scripted SDK transport.
 2. Offline dsh integration tests use real dsh packages and the scripted transport.
@@ -150,6 +152,13 @@ result delivery, opened session, close request, and remaining child handle.
 | O79 | An assistant message with a tool block, usage, and `stop_reason: null`, then the result message | One usage event, then one synthetic `tool_use` stop; one dsh stream finishes `tool-calls`; the result usage is a fallback only when no assistant message had usage |
 | O80 | A native response tool name qualified as `mcp__dsh__dsh__<name>` | The published dsh tool name is `<name>`; the call id is preserved; the stream finishes `tool-calls` |
 | O81 | One API message split into several assistant messages with the same id (thinking, text, tool_use) | Block indexes continue across the split; one usage event; one tool stop; the stream finishes `tool-calls` with reasoning, text, and tool-call blocks |
+| O82 | A conversation request with 81 retained image occurrences | `IMAGE_OFFLOAD_REQUIRED` before dispatch with `offloadImages` 1; no native start; the retry after one offload sends 80 image blocks and one placeholder, and reads no bytes for the offloaded occurrence |
+| O83 | A request with four 5 MiB images (about 28 MiB encoded) | `IMAGE_OFFLOAD_REQUIRED` with the byte-driven `offloadImages` count before dispatch; no native start |
+| O84 | An over-budget request on a live generation, then the offload retry | The failure keeps the native session open; the retry continues the same native session with the placeholder text |
+| O85 | A generation at 50 retained images plus a 50-image user turn | One new generation with reason `image-budget` and no changed fields; the import holds placeholders and no image bytes; the same dsh session continues; the next request uses the new session |
+| O86 | A tool-result continuation whose 40 result images would pass the generation limit | One new generation with reason `image-budget`; the import holds the completed outcome and image placeholders; the new native input holds no image block; the old tool wait is cancelled |
+| O87 | A generation at 40 retained images plus a 40-image user turn | One native generation; no generation change; the second native input holds 40 image blocks |
+| O88 | A summary auxiliary call whose history holds more than 80 images | The flat-text summary import sends no image bytes, reads no attachment version, and is not subject to the request budget |
 
 Use independent expected response data for thinking tests. A comparison that
 derives both expected and actual data from the altered request cannot detect a
@@ -211,6 +220,20 @@ and from one MCP tool-result image. The probe used the first-party subscription
 login and made two inference requests. The evidence summary records the model,
 versions, fixture, answers, and gaps. This is not a plugin-in-dsh test and not a
 retention test. Repeat it on the plugin's actual dsh path before a release claim.
+
+## Live many-image test
+
+On 2026-11-11 a direct official-SDK probe sent one streaming user message with
+100 synthetic 1x1 images and one with 101 images. Both turns completed with
+subtype `success` and the answer `MANY-IMAGES-OK`. The selected model reported
+`contextWindow` 1000000 and `maxOutputTokens` 128000. The probe made two
+inference requests. It did not reach the documented request image limit, so the
+exact provider image limit is unmeasured. See
+[the many-image probe summary](evidence/many-image-probe-2026-11-11.json). This
+is not a plugin-in-dsh test. The plugin image budget and the retained-image
+generation threshold need their own live dsh profile test. Do not claim a
+measured provider image limit, an image byte limit, or 600-image behavior until
+a probe reaches them.
 
 ## Live capacity and compaction test
 
