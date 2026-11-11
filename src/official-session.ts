@@ -45,6 +45,12 @@ interface SdkUserMessage {
   readonly parent_tool_use_id: null
 }
 
+interface OfficialModelUsage {
+  readonly contextWindow?: unknown
+  readonly maxOutputTokens?: unknown
+  readonly canonicalModel?: unknown
+}
+
 interface OfficialMessage {
   readonly type?: string
   readonly subtype?: string
@@ -60,6 +66,8 @@ interface OfficialMessage {
   readonly errors?: readonly unknown[]
   /** Error value of an SDKAssistantMessage. */
   readonly error?: string
+  /** Per-model capacity of the SDK result message. */
+  readonly modelUsage?: Readonly<Record<string, OfficialModelUsage>>
   readonly usage?: {
     readonly input_tokens?: number
     readonly output_tokens?: number
@@ -149,7 +157,7 @@ export async function startOfficialSession(config: NativeSessionConfig): Promise
     sdkVersion: PINNED_SDK_VERSION,
   }
   const queue = new EventQueue()
-  const consumer = consume(query, queue, identity)
+  const consumer = consume(query, queue, identity, launch.model)
   consumer.catch((error: unknown) => {
     queue.fail(error)
   })
@@ -172,6 +180,7 @@ async function consume(
   query: SdkQuery,
   queue: EventQueue,
   identity: { cliSessionId: string; cliVersion: string },
+  requestedModel: string,
 ): Promise<void> {
   let stopSent = false
   let messageId = 'assistant'
@@ -226,10 +235,45 @@ async function consume(
         queue.close()
         return
       }
+      // The capacity event is informational. The native-error path above owns
+      // the turn outcome, so a failed result reports no capacity for this turn.
+      const usageEvent = modelUsageEvent(message, requestedModel)
+      if (usageEvent !== undefined) queue.push(usageEvent)
       continue
     }
   }
   queue.close()
+}
+
+/**
+ * Read the capacity of the requested model from one SDK result message.
+ * The SDK keys `modelUsage` by the served model string. A single entry is used
+ * when no key or canonical id matches the requested model. Two or more
+ * unmatched entries are not attributed, because the result cannot prove which
+ * one answered the requested model.
+ */
+function modelUsageEvent(message: OfficialMessage, requestedModel: string): NativeEvent | undefined {
+  const usage = message.modelUsage
+  if (usage === undefined) return undefined
+  const entries = Object.entries(usage)
+  const exact = entries.filter(([key, entry]) => key === requestedModel || entry?.canonicalModel === requestedModel)
+  const entry = exact.length === 1 ? exact[0] : entries.length === 1 ? entries[0] : undefined
+  if (entry === undefined) return undefined
+  const [nativeModel, values] = entry
+  const contextWindow = positiveInteger(values?.contextWindow)
+  const maxOutputTokens = positiveInteger(values?.maxOutputTokens)
+  if (contextWindow === undefined || maxOutputTokens === undefined) return undefined
+  return {
+    type: 'model-usage',
+    model: requestedModel,
+    nativeModel,
+    contextWindow,
+    maxOutputTokens,
+  }
+}
+
+function positiveInteger(value: unknown): number | undefined {
+  return typeof value === 'number' && Number.isSafeInteger(value) && value > 0 ? value : undefined
 }
 
 function createInputQueue(): {

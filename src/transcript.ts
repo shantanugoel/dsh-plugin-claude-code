@@ -111,7 +111,7 @@ export type Admission =
     readonly generationChange: GenerationChangeV1
   }
 
-interface LooseBlock {
+export interface LooseBlock {
   readonly type?: unknown
   readonly text?: unknown
   readonly id?: unknown

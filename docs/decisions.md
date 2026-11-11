@@ -71,6 +71,10 @@ not become live evidence when the checker passes.
   and do not run the installed Claude binary.
 - Can native resume preserve an interrupted tool turn without rewriting its
   bound input? This is outside the first release until measured.
+- Do the measured `contextWindow` values, the 200000 fallback, and the dsh token
+  meter work in a live dsh profile? The offline suite cannot show them.
+- Does a live compaction record a replacement surface and run the summary
+  import without a false retention claim? The offline suite cannot show it.
 
 Fresh-worker replay, relay insertion, native resume, and ACP are not marked
 impossible. This plan selects one path. Record evidence before closing another.
@@ -249,6 +253,9 @@ and needs the signed native prefix. A fresh process cannot import that prefix,
 so a correct refusal is better than a false success. Compaction stays an open
 gap until a recorded import path exists.
 
+Revision on 2026-11-11: D21 replaces the refusal for the summary purposes. The
+title path and the refusal for an unmapped purpose stay unchanged.
+
 ## D19. Keep file bytes outside the adapter
 
 Decision: do not read or send file bytes. The dsh runtime projects every
@@ -400,3 +407,48 @@ cancelled, not released with an invented result. The recorded import has no
 signed thinking. Do not claim signed-thinking retention across the change.
 
 Evidence: offline rows O58 to O61. No live model request measured this change.
+
+## D24. Report a measured context window with a documented fallback
+
+Decision: `resolveModel` returns `context: { contextWindow }` for each model. A
+process-wide cache is keyed by the requested model id. The adapter records the
+`contextWindow` and `maxOutputTokens` of one SDK result message `modelUsage`
+entry at turn end. Before the first measurement, `resolveModel` returns the
+static fallback 200000. Do not return `defaultMaxTokens`.
+
+Reason: `dsh-compaction-basic` throws `no context capacity` when the resolved
+model has no `context`. Its pressure check runs at each step boundary, so this
+route had no automatic compaction and could not start a pressure model switch.
+The SDK 0.3.322 declaration reports both values on the result message. The host
+`reservedCompletionTokens` function uses the request `maxTokens`, then
+`defaultMaxTokens`, then zero. A declared default cap is not necessary, and it
+would change the message budget with no measurement. The 200000 fallback matches
+the current Claude context size, but this project did not measure it. The result
+message follows the turn's assistant messages. The fallback can stay in use
+until a later request reads the event. A first-turn measurement is therefore not
+guaranteed.
+
+Evidence: offline rows O62 and O63, and the real dsh LLM service normalization.
+No live dsh token meter and no live measured value exist.
+
+## D25. Import a compaction prefix as flat text for a fresh native session
+
+Decision: accept the summary purposes `compaction` and `summary`. Start a
+separate native session. Send one deterministic user text block: a header, the
+replayed rows as flat text, a separator, and the final instruction text verbatim
+at the end. Rows are `[user]`, `[assistant]`, `[tool result]`, and
+`[tool error]`. The import keeps no signed thinking, no signature text, no live
+tool-call IDs, and no image bytes. An image becomes a metadata placeholder. The
+summary session declares no dsh tools. Store `retentionAudit: 'unavailable'` and
+a null native request record on the auxiliary finish, even when the summary turn
+carries request evidence. Keep the parked conversation generation open.
+
+Reason: a fresh native process cannot continue a signed prefix. A recorded
+textual import gives the compaction service a summary without a false retention
+claim. The dsh compaction service records the replacement surface. The adapter
+does not write the conversation session. The summary call uses the same spend,
+auth, workspace, output-cap, and deadline controls as a title call. Removal of
+the dsh tool list prevents a summary from starting a tool wait that no
+conversation can answer.
+
+Evidence: offline rows O40 and O64 to O66. No live dsh compaction ran.

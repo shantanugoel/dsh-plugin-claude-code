@@ -37,6 +37,13 @@ effort, output-cap, or workspace change starts one new generation with the
 current configuration and a recorded `configuration-change` (D23). No live model
 request measured this change.
 
+Status, 2026-11-11 (context capacity and compaction, D24 and D25): `resolveModel`
+reports a context window, first as a documented 200000 fallback and then from a
+process-wide measured cache. The adapter supports the `compaction` and `summary`
+auxiliary purposes through a deterministic flat-text import in a separate native
+session. The offline suite has 135 tests after this change merged. No live dsh
+token meter, no live compaction, and no live model switch were measured.
+
 ## Fixed requirements
 
 - Minimum target: dsh 0.2.2-rc.1. Check each advertised later version.
@@ -176,6 +183,16 @@ outcomes. A complete synthetic dsh loop performs two steps on one fake session.
   the record on read.
 - [x] Add offline tests O43 to O52. Native resume is outside this milestone.
 - [x] Dispose only owned sessions/processes on abort, agent disposal, or plugin unload.
+- [x] Report `context.contextWindow` on every resolved model. Learn the value
+  from the native result message `modelUsage` and keep it in a process-wide
+  cache. Use the documented 200000 fallback before the first measurement. Do not
+  report `defaultMaxTokens`.
+- [x] Support the harness summary purposes in a separate native session with a
+  deterministic flat-text import. Keep no signed thinking, tool-call ID, or
+  image bytes in the import. Mark that auxiliary replay audit `unavailable`.
+- [ ] Run a live dsh profile compaction and model switch, and show the context
+  meter. The offline suite cannot show the live token meter or the live
+  compaction result.
 
 Completion: minimum-version dsh tests cover edit, compaction, workspace change,
 model change, tool change, plugin unload, export/restore, missing replay state,
@@ -282,8 +299,13 @@ dsh profile acceptance run is not done.
   request record. This needs the deployment scope from the user.
 - [ ] Measure many retained images, image offload on a long session, image
   retention with signed thinking, and image delivery to a subagent.
-- [ ] Decide whether a compaction summary can import the transcript without
-  signed history. Keep `UNSUPPORTED_INPUT` until a measurement passes.
+- [x] Support the compaction summary as a recorded flat-text import without
+  signed history. The offline suite covers the import, the fresh native session,
+  and the unavailable audit. This is not a live measurement.
+- [ ] Run a live dsh profile compaction and observe the replacement surface.
+  Confirm that no signed-history retention is claimed for the summary.
+- [ ] Show the context capacity and token pressure of this route in the dsh UI.
+  Confirm the measured value replaces the fallback in a live session.
 
 ## M10. Native turn errors and truncated answers
 

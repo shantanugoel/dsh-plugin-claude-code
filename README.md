@@ -95,6 +95,15 @@ runs each call with its own sandbox and approvals.
   after Stop, a generation timeout, a lost Claude process, a dsh restore or
   reload, a forked subagent, a plan-mode toggle, and an MCP tool change. The dsh
   session continues. The import does not keep the old signed thinking.
+- **Context capacity.** The route reports a context window of 200000 tokens to
+  dsh before the first native result message. That value is a documented
+  fallback and not a measurement. After the first result message the plugin
+  keeps the model's reported `contextWindow`. The plugin does not declare a
+  default output cap.
+- **Compaction summary.** A compaction or summary call replays the conversation
+  prefix as recorded text in a separate Claude session. The text keeps no signed
+  thinking, no tool-call IDs, and no image bytes. dsh records the replacement
+  surface.
 - **Truncated answers.** A turn that stops at the output-token limit gets a
   `max-tokens` finish. The answer is incomplete. The plugin never reports this
   turn as a normal stop.
@@ -134,10 +143,16 @@ message.
   events stay in the dsh log.
 - A truncated turn can carry only text. The plugin does not execute a tool call
   from a turn that stops at the output-token limit.
-- A session-title call works. A compaction or summary call that replays
-  conversation history returns `UNSUPPORTED_INPUT`, because a new native session
-  cannot import signed history. Record a context import to start a new
-  generation.
+- A session-title call works. A compaction or summary call works as a recorded
+  textual import in a separate Claude session. The import keeps no signed
+  history, and the plugin does not report signed-prefix retention for it. A
+  request after dsh replaces the conversation surface needs the recorded
+  new-generation path. Without it, the route returns `REBASE_REQUIRED`.
+  Automatic compaction, `/compact`, and a high-pressure model switch are not
+  verified in a live dsh profile.
+- The 200000-token context window is a fallback until the first measurement. The
+  dsh token meter and the measured value have not been verified in a live dsh
+  profile.
 - Your Claude plan limits apply. Extra usage charges are possible. The plugin
   does not block them.
 

@@ -2,8 +2,8 @@
 
 Use three test layers. Keep the result of each layer separate.
 
-Offline status on 2026-11-11: the Node suite covers rows O01 through O61 with
-synthetic data and the scripted runtime, and 126 tests pass. The dsh 0.2.2-rc.1
+Offline status on 2026-11-11: the Node suite covers rows O01 through O66 with
+synthetic data and the scripted runtime, and 135 tests pass. The dsh 0.2.2-rc.1
 LLM service, session store, and compaction balance functions are loaded in that
 suite. The real dsh LLM runtime is mounted for file and image projection tests
 and for the native error finish test. The agent loop is not driven. No offline
@@ -12,20 +12,12 @@ also passed on 2026-11-11.
 
 Rows O43 to O52 cover generation recovery with a recorded textual import. Rows
 O53 to O57 cover native turn-error mapping and truncated answers. Rows O58 to
-O61 cover a fixed-configuration change with the same recorded-import mechanism.
-They are offline tests. No live model request measured the rollover, a provider
-error, or a configuration change, and the tests claim no signed-thinking
-retention across a rollover or a configuration change.
-LLM service, session store, and compaction balance functions are loaded in that
-suite. The real dsh LLM runtime is mounted for file and image projection tests
-and for the native error finish test. The agent loop is not driven. No offline
-command starts the installed Claude binary. The distribution checks I01 to I06
-also passed on 2026-11-11.
-
-Rows O43 to O52 cover generation recovery with a recorded textual import. Rows
-O53 to O57 cover native turn-error mapping and truncated answers. They are
-offline tests. No live model request measured the rollover or a provider error,
-and the tests claim no signed-thinking retention across the rollover.
+O61 cover a fixed-configuration change with the recorded-import mechanism. Rows
+O62 to O66 cover the context-capacity cache and the flat-text compaction summary
+import. They are offline tests. No live model request measured the rollover, a
+provider error, a configuration change, a live token meter, or a live dsh
+compaction, and the tests claim no signed-thinking retention across any rollover
+or import.
 
 A separate live probe on 2026-11-11 used the official SDK 0.3.322 and Claude
 Code 2.1.319. It read one synthetic image from a user message and one synthetic
@@ -110,7 +102,7 @@ result delivery, opened session, close request, and remaining child handle.
 | O37 | One file block through the real dsh LLM runtime | The runtime replaces the file with its read-only handle text; the adapter never receives the bytes |
 | O38 | One image through the real dsh LLM runtime | The runtime keeps the image because the route declares image input; the adapter receives the block |
 | O39 | A session-title call with `maxTokens`, an invalid output cap, or a changed cap | The cap reaches `CLAUDE_CODE_MAX_OUTPUT_TOKENS`; an invalid or changed cap is refused before dispatch |
-| O40 | A compaction-style auxiliary call with assistant history | `UNSUPPORTED_INPUT` with no native session start |
+| O40 | An auxiliary purpose with assistant history and no summary mapping | `UNSUPPORTED_INPUT` with no native session start |
 | O41 | Two leading user messages | One native prompt with both content lists in order |
 | O42 | Assistant usage that reports cache read and write tokens | The usage chunk keeps both cache counts |
 | O43 | Abort mid-turn, then one new user message | One dsh stream finishes on one new native session; the import has the earlier user text and the new input; replay records reason `abort`; the next request uses the same new session |
@@ -132,6 +124,11 @@ result delivery, opened session, close request, and remaining child handle.
 | O59 | Tool addition then tool removal | New generation each time with the complete current tool list and `changedFields` equal `['tools']`; the new generation releases a tool result through its own bridge |
 | O60 | Model, effort, output cap, or workspace change | One new generation with the new value and `changedFields` in stable order; no `REBASE_REQUIRED`; a prompt change during a tool wait imports the completed outcome |
 | O61 | A configuration change with an earlier-prefix edit or an exact repeat | Refuse before any new native start; keep the edit and repeat rules |
+| O62 | `resolveModel` before a measurement, then after a scripted result `modelUsage` event, then for a different model | The documented 200000 fallback first; the measured `contextWindow` after; the other model keeps the fallback; no `defaultMaxTokens` |
+| O63 | The real dsh LLM service resolves the route before and after a measurement; a model switch on a live generation | The service accepts `context.contextWindow`; the switch request returns `REBASE_REQUIRED` and the original native generation still serves the next turn |
+| O64 | A `compaction` auxiliary call with system, user, assistant thinking, tool-call, tool-result, and image history | One fresh native session; flat text rows; no thinking text, signature, tool-call ID, or image bytes; instruction last; no dsh tools; `maxTokens` maps to the output cap; the live conversation session is untouched |
+| O65 | A conversation turn after a compaction auxiliary call | The original native session takes the next turn; no second native start |
+| O66 | Accepted-looking request evidence on a compaction auxiliary turn | `retentionAudit` is `unavailable` and `nativeRequestRecord` is null |
 
 Use independent expected response data for thinking tests. A comparison that
 derives both expected and actual data from the altered request cannot detect a
@@ -176,6 +173,8 @@ Required checks:
 - Session disposal and plugin removal close the exact owned native sessions.
 - A native turn error becomes a terminal dsh `error` finish with its mapped
   code, so the real `agent/request-error` waterfall receives the code.
+- `LlmRuntime.resolveModelInfo` accepts the reported context capacity before and
+  after a scripted measurement.
 - A model catalog blocked by the spend guard cannot be selected as a usable route.
 - The packaged plugin resolves the host's service classes and does not register
   duplicate providers after reload.
@@ -190,6 +189,18 @@ and from one MCP tool-result image. The probe used the first-party subscription
 login and made two inference requests. The evidence summary records the model,
 versions, fixture, answers, and gaps. This is not a plugin-in-dsh test and not a
 retention test. Repeat it on the plugin's actual dsh path before a release claim.
+
+## Live capacity and compaction test
+
+This test needs a dsh profile and a permitted live inference run. It has not run.
+A dsh profile must show a context meter for this route. The first turn uses the
+200000 fallback. A later resolve must use the measured value from the native
+result message. Then a manual `/compact` and an automatic pressure compaction
+must record a replacement surface. A model switch at high pressure must either
+compact or return a clear refusal. The summary native session must receive the
+flat text import and no signed history. Record the exact dsh, SDK, CLI, and model
+versions. Keep raw captures in `.local/evidence/`. Do not claim a token meter,
+an automatic compaction, or a live model switch until this test passes.
 
 ## Live retention test
 

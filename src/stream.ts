@@ -133,6 +133,11 @@ export function translateTurn(events: readonly NativeEvent[], input: TranslateIn
       assertNativeTools(event.names, input.allowedNativeTools)
       continue
     }
+    if (event.type === 'model-usage') {
+      // The adapter records capacity before this translation. This event is not
+      // part of the model response, so it cannot open a block.
+      continue
+    }
     rememberMessage(messageIds, event.messageId)
     const key = blockKey(event.messageId, event.index)
     if (event.type === 'block-start') {

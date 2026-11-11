@@ -23,6 +23,7 @@ Planned source files:
 | `src/adapter.ts` | `LlmAdapter`, preparation, catalog, stream entry |
 | `src/sdk-runtime.ts` | Official SDK process and input queue |
 | `src/session-manager.ts` | Session map, generation locks, and state |
+| `src/capacity.ts` | Measured context capacity cache and the documented fallback |
 | `src/transcript.ts` | Frozen input validation, projection, and hashes |
 | `src/replay.ts` | Versioned replay data, generation-change records, and consistency checks |
 | `src/rollover.ts` | Deterministic bounded textual import and recovery boundary split |
@@ -31,6 +32,7 @@ Planned source files:
 | `src/native-failure.ts` | Pure native result mapping, message cleanup, and dsh error conversion |
 | `src/context.ts` | dsh workspace and prompt integration |
 | `src/rebase.ts` | Recorded context replacement and generation reset |
+| `src/summary-import.ts` | Deterministic textual import for a summary auxiliary call |
 | `src/auth.ts` | Environment filtering and official auth-status check |
 | `src/spend-gate.ts` | Evidence-based pre-inference spending decision |
 | `src/evidence.ts` | Native request audit and private diagnostic files |
@@ -71,11 +73,23 @@ environment control. The exact value is part of the generation identity. A
 change starts one new generation with a recorded `configuration-change`. The
 value is not a sampling field and must not be dropped. Reject a non-positive or non-integer value before dispatch.
 
+`resolveModel` returns `context: { contextWindow }` for every model. The first
+value is the documented static fallback of 200000 tokens. It is not measured.
+Each native result message reports `modelUsage`. The adapter records that entry
+in a process-wide cache, keyed by the requested model id, and later calls use
+the measured `contextWindow`. Do not return `defaultMaxTokens` unless a measured
+consumer needs it. The compaction reservation uses the request `maxTokens`, or
+zero when the request declares none. See decisions D20 and D21.
+
 Accept every auxiliary `purpose` value that the harness declares. Each
 auxiliary call uses a separate native session with the same admission checks. A
-title request that carries one user message is supported. A summary or
-compaction request that carries assistant history returns `UNSUPPORTED_INPUT`
-because a new native session has no signed prefix to continue.
+title request that carries one user message is supported. The summary purposes
+`compaction` and `summary` are supported through a recorded textual import. The
+new native session receives the conversation system prompt and one user text
+block with the flattened rows and the final instruction last. The import
+excludes signed thinking, signature text, live tool-call IDs, and image bytes.
+The summary session declares no dsh tools. Any other auxiliary purpose that
+replays conversation history returns `UNSUPPORTED_INPUT`.
 
 Do not declare `systemPromptUpdate` or `toolUpdate` for the first release.
 The generation uses one fixed prompt and the current tool list. The agent loop
@@ -134,6 +148,14 @@ items keep their text, image items keep their base64 data and media type.
 Use a streaming input queue that remains open between dsh streams. Start its
 consumer before supplying input. Do not create a second SDK query for a tool
 continuation. The bridge returns the tool result inside the existing query.
+
+The native event stream also carries informational events that are not response
+blocks. `native-tool-list` reports the tool names of the initialization event.
+`request-evidence` carries the diagnostic request record. `model-usage` carries
+the requested model id, the SDK model key, and the `contextWindow` and
+`maxOutputTokens` values of one `modelUsage` entry. The adapter records
+`model-usage` in the capacity cache and the turn translation ignores it. The
+result message is the only producer of that event.
 
 Select the user's installed official executable through the SDK's supported
 executable-path option. Verify its reported version. Do not silently select a
@@ -307,6 +329,11 @@ that survive dsh export and restore.
 Do not put opaque native data into visible text. Treat redacted thinking as an
 opaque native block. Zero-length thinking plus a signature is present thinking.
 The display projection can be empty; the original native data must remain.
+
+A summary auxiliary finish always stores `retentionAudit: 'unavailable'` and a
+null `nativeRequestRecord`, even when its own turn carries complete request
+evidence. The flattened textual import is not a signed native prefix. Store the
+normal response blocks and usage only.
 
 ## MCP calls and response boundaries
 

@@ -8,6 +8,13 @@ That probe did not run the plugin in a dsh profile. No plugin was installed in a
 dsh profile for this change. Production inference is refused. The complete
 plugin has not passed a live dsh integration test.
 
+On 2026-11-11 the adapter also reports a context window for each resolved model
+and supports the harness compaction summary call. A process-wide cache replaces
+the static context fallback with the value from the native result message. The
+summary call is a deterministic textual import in a separate native session.
+The offline suite covers both paths. No live dsh token meter and no live
+compaction summary were measured.
+
 Use one stateful `LlmAdapter` with one persistent official Claude Agent SDK
 session for each dsh session generation. The SDK must run the user's installed,
 unmodified official Claude binary. Use an MCP bridge to stop Claude at each tool
@@ -50,6 +57,15 @@ synthetic PNG in the streaming user message. A second probe returned the same
 PNG from an in-process MCP tool. The model read the word in both cases. See
 [the image probe summary](evidence/sdk-image-probe-2026-11-11.json). The probe
 did not run the plugin inside dsh and did not test image retention with thinking.
+
+On 2026-11-11 the capacity path used no new inference. A declaration review of
+SDK 0.3.322 found `ModelUsage.contextWindow` and `ModelUsage.maxOutputTokens` on
+the result message. The host `dsh-compaction-basic` source shows that the
+pressure check needs `context.contextWindow` from the resolved model. Its
+`reservedCompletionTokens` function uses the request `maxTokens`, then
+`defaultMaxTokens`, then zero. The offline suite exercises these paths with the
+scripted runtime. The real model values, the static fallback, and the dsh token
+meter remain unverified in a live dsh profile.
 
 The request also includes `DeferredToolPlaceholder` and `advisor`, although the
 startup event lists only `mcp__dsh__probe`. Thus, the startup tool list alone is
@@ -207,9 +223,32 @@ flag on each occurrence.
 Map a dsh `maxTokens` control to the official `CLAUDE_CODE_MAX_OUTPUT_TOKENS`
 environment control for the new native session. The value stays fixed for that
 generation, as the model and effort do. A change requires a new generation.
-Accept the harness auxiliary purposes. A title call is a new isolated native
-session. A summary or compaction call that replays conversation history returns
-`UNSUPPORTED_INPUT` until a recorded import path exists.
+Report a context window with `resolveModel`. The first value is a static
+fallback of 200000 tokens. This value is not measured. Each native result
+message reports `modelUsage`. The adapter records that entry in a process-wide
+cache, keyed by the requested model id. Later `resolveModel` calls use the
+measured `contextWindow`. The result message arrives after the turn's last
+assistant message, so the fallback can stay in use until a later request reads
+the event. Do not report `defaultMaxTokens`: the compaction reservation uses the
+request `maxTokens`, or zero when the request has no cap. A materialized default
+output cap would shrink the message budget with no measured benefit. See
+decision D20.
+
+Support the harness summary purposes `compaction` and `summary`. Start a
+separate native session with the conversation system prompt. Send one
+deterministic user text block: a header, the replayed rows as flattened text, a
+separator, and the final instruction text verbatim at the end. Each row is
+`[user]`, `[assistant]`, `[tool result]`, or `[tool error]`. The text excludes
+signed thinking, signature text, live tool-call IDs, and image bytes. An image
+becomes one metadata placeholder. The summary session has no dsh tools, so it
+must produce text. The adapter returns the normal chunks. This is a recorded
+textual import: the finish replay envelope reports `retentionAudit`
+`unavailable` and stores no native request record, even when the summary turn
+carries request evidence. See decision D21.
+
+Accept the harness auxiliary purposes. A title call is an isolated native
+session with one user message. An auxiliary purpose that replays conversation
+history and has no summary mapping returns `UNSUPPORTED_INPUT`.
 
 
 Do not use the host process directory as a workspace fallback or change its
@@ -282,6 +321,20 @@ continues earlier conversation, recover the session automatically:
    model, effort, output cap, workspace, system prompt, and tools. The new
    native session receives the new values. An earlier-prefix edit still returns
    `REBASE_REQUIRED` before any new generation starts.
+
+The compaction service records the replacement surface. The adapter only
+produces the summary text, as a recorded textual import (see section 5). The next
+request after the replacement surface must use a recorded new generation. If none
+exists, the adapter returns `REBASE_REQUIRED` and keeps the old generation
+intact. Ordinary partial compaction, which keeps a signed recent tail after
+changing its prefix, must return `REBASE_REQUIRED`. Do not flatten the frozen
+transcript inside the adapter for a live turn.
+
+A model change continues with a recorded configuration change (step 6). The
+switch check can price the proposed model because `resolveModel` reports a
+context capacity. A pressure compaction at the switch boundary can run its
+summary call. A live dsh profile run of the token meter and the model switch is
+not measured.
 
 The replay data is the recorded import. This is a new model conversation. It
 does not keep the old signed thinking, and it does not claim to. The dsh session,
@@ -434,6 +487,12 @@ arbitrary transcript import, silent mid-tool context updates, or signature reuse
 after a changed prefix. Its recorded textual import does not preserve signed
 thinking. It does not remove subscription limits, establish a subscription-only
 billing switch, or prove crash-safe native resume.
+
+The context window is a fallback until the native runtime reports one. The
+summary call, the continuation after a replacement surface, the dsh token meter,
+and a model switch after compaction are offline paths only. They need a live dsh
+profile test. The summary path is a textual import with no signed history. It
+does not keep the native signed prefix across the compaction.
 
 It does not establish that fresh-process replay or a relay can never work.
 Those paths are outside this design. The existing measurements support one

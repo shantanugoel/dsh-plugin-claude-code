@@ -89,6 +89,20 @@ export type NativeEvent =
   }
   | { readonly type: 'turn-error'; readonly failure: NativeFailure }
   | { readonly type: 'native-tool-list'; readonly names: readonly string[] }
+  | {
+    /**
+     * Capacity reported by the SDK result message `modelUsage` entry. The
+     * event is informational. The adapter records it in the capacity cache and
+     * the turn translation ignores it.
+     */
+    readonly type: 'model-usage'
+    /** Requested model id that this measurement applies to. */
+    readonly model: string
+    /** Model key that the SDK result message used for this entry. */
+    readonly nativeModel: string
+    readonly contextWindow: number
+    readonly maxOutputTokens: number
+  }
   | { readonly type: 'request-evidence'; readonly record: unknown }
 
 export interface NativeSession {

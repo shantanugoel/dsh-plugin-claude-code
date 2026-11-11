@@ -13,6 +13,7 @@ import {
 
 import type { AuthGuard, HomeSource } from './auth.js'
 import { canonicalJson, contentHash } from './canonical.js'
+import { contextWindowFor, recordMeasuredModelUsage } from './capacity.js'
 import { requireAbsoluteWorkspace, type SessionOriginSource, type WorkspaceSource } from './context.js'
 import { withDeadline, type Deadlines } from './deadlines.js'
 import { claudeEffort, reasoningFor, type ClaudeEffort } from './effort.js'
@@ -37,6 +38,7 @@ import type { Session, SessionStore } from '@deepseek-ai/dsh-session'
 
 import type { SpendGate } from './spend-gate.js'
 import { finishReasonFor, isAbortError, nativeFailureReasonOf, readUntilStop, translateTurn } from './stream.js'
+import { buildSummaryImport, isSummaryPurpose } from './summary-import.js'
 import {
   admitTranscript,
   publicationFrom,
@@ -142,6 +144,7 @@ export class ClaudeCodeAdapter extends LlmAdapter {
         id: model,
         name: model,
         inputModalities: ['text', 'image'],
+        context: { contextWindow: contextWindowFor(model) },
         ...(reasoning === undefined ? {} : { reasoning }),
       }
     })
@@ -272,26 +275,50 @@ export class ClaudeCodeAdapter extends LlmAdapter {
     workspace: string,
     key: string,
   ): AsyncIterable<StreamChunk> {
-    if (options.messages.some((message) => message.role === 'assistant' || message.role === 'tool')) {
-      throw pluginFailure(
-        'UNSUPPORTED_INPUT',
-        'This auxiliary request replays conversation history, which needs a recorded import.',
-      )
+    const purpose = options.purpose === undefined ? '' : String(options.purpose)
+    const summary = isSummaryPurpose(purpose)
+    let admission: Admission
+    let sessionOptions: GenerateOptions = options
+    let content: readonly NativeContentBlock[]
+    if (summary) {
+      // One deterministic textual import in a separate native session. The
+      // import has no signed thinking, no tool-call IDs, and no image bytes.
+      // The final user instruction stays last, so the summary model reads it
+      // as the terminal request. This is a recorded textual import: it does
+      // not retain a native signed prefix.
+      const imported = buildSummaryImport(options.messages)
+      admission = {
+        kind: 'first-user',
+        userContent: [{ type: 'text', text: imported.text }],
+        requestHash: imported.requestHash,
+        committed: [],
+      }
+      content = [{ type: 'text', text: imported.text }]
+      // A summary session must produce text. It has no dsh tools, so it cannot
+      // start a tool wait that no conversation can answer.
+      sessionOptions = { ...options, tools: [] }
+    } else {
+      if (options.messages.some((message) => message.role === 'assistant' || message.role === 'tool')) {
+        throw pluginFailure(
+          'UNSUPPORTED_INPUT',
+          'This auxiliary request replays conversation history, which needs a recorded import.',
+        )
+      }
+      admission = admitTranscript({
+        messages: options.messages,
+        waitingForResults: false,
+        state: { committed: [], pending: undefined, dispatchedHash: undefined },
+      })
+      if (admission.kind !== 'first-user') {
+        throw pluginFailure(
+          'UNSUPPORTED_INPUT',
+          'This auxiliary request replays conversation history, which needs a recorded import.',
+        )
+      }
+      content = await this.prepareContent(admission.userContent, options.signal)
     }
-    const admission = admitTranscript({
-      messages: options.messages,
-      waitingForResults: false,
-      state: { committed: [], pending: undefined, dispatchedHash: undefined },
-    })
-    if (admission.kind !== 'first-user') {
-      throw pluginFailure(
-        'UNSUPPORTED_INPUT',
-        'This auxiliary request replays conversation history, which needs a recorded import.',
-      )
-    }
-    const content = await this.prepareContent(admission.userContent, options.signal)
     const effort = await this.effortFor(options.model, options.reasoningEffort)
-    const live = await this.ensureSession(undefined, key, options, workspace, true, 'aux', effort)
+    const live = await this.ensureSession(undefined, key, sessionOptions, workspace, true, 'aux', effort)
     try {
       live.phase = 'GENERATING'
       live.dispatchedHash = admission.requestHash
@@ -525,6 +552,7 @@ export class ClaudeCodeAdapter extends LlmAdapter {
     signal: AbortSignal | undefined,
   ): Promise<StreamChunk[]> {
     const events = await readUntilStop(live.iterator, live.deadlines.generationMs, signal)
+    recordMeasuredModelUsage(events)
     const translated = translateTurn(events, {
       nativeToDsh: live.nativeToDsh,
       dshNames: live.dshNames,
@@ -727,6 +755,9 @@ function buildReplay(
   evidence: unknown,
   auditAccepted: boolean,
 ): ReplayV1 {
+  // An auxiliary call that replays a flattened import is never an audit of a
+  // native signed prefix, even when its own turn carries request evidence.
+  const audit = auditAccepted && !live.auxiliary
   return parseReplay({
     format: 'claude-session-v1',
     generationId: live.generationId,
@@ -737,10 +768,10 @@ function buildReplay(
     workspace: live.workspace,
     requestPrefixHash: admission.requestHash,
     projectedContentHash: contentHash(blocks),
-    nativeRequestRecord: auditAccepted ? evidence : null,
+    nativeRequestRecord: audit ? evidence : null,
     nativeResponseBlocks: nativeBlocks,
     toolNameMap: live.toolNameMap,
-    retentionAudit: auditAccepted ? 'accepted' : 'unavailable',
+    retentionAudit: audit ? 'accepted' : 'unavailable',
     ...(admission.kind === 'recovered' ? { generationChange: admission.generationChange } : {}),
   })
 }
