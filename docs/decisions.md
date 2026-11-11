@@ -693,3 +693,19 @@ messages. The tool list held the dsh MCP tool and the one inert placeholder;
 the advisor tool was absent. The probe did not produce a signed thinking block,
 so the live signature-retention comparison is not measured. A live turn through
 an installed dsh profile is not measured; issue #13 covers it.
+
+Revision on 2026-11-11 after a live isolated-dsh profile run: the first in-profile
+capture reported `unavailable` for three shapes that the SDK and CLI apply. The
+inert placeholder can appear at any position of the tool list, not only first.
+The SDK converts each declared JSON Schema to a Zod shape and back, which removes
+the object-level `description` and `additionalProperties` annotations. A
+text-only user input is sent as one joined string, not one block for each text
+block. The comparison now accepts the placeholder at any position, ignores the
+two annotations the SDK removes on both sides, and records the joined user text.
+The complete recorded request keeps the actual tool definitions. A live
+isolated-dsh tool turn then stored `retentionAudit: "accepted"` for every turn.
+The recorded tool list holds the 23 dsh MCP tools and the inert placeholder, so
+the literal "only dsh MCP tools" acceptance item is not met; the design permits
+the inert placeholder only with its complete definition recorded, which this
+capture does. An image-bearing request still reports `unavailable` because the
+capture refuses image content; that item stays unmeasured.

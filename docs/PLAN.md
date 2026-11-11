@@ -61,6 +61,14 @@ Status, 2026-11-11 (issue #12): no dsh release later than 0.2.2-rc.1 exists. The
 plugin keeps the exact `engines.dsh` pin (D26), the README agrees, and the
 plugin manager refuses an untested engine requirement with a clear message.
 
+Status, 2026-11-11 (issue #7 live profile): a live isolated-dsh headless tool turn
+stored `retentionAudit: "accepted"` for every turn. The capture accepts the CLI
+inert placeholder at any position, the SDK schema normalization, and the joined
+text-only user input. The recorded tool list holds the 23 dsh MCP tools and the
+inert placeholder with its full definition, so the literal "only dsh MCP tools"
+item is not met; the design permits the inert placeholder. An image-bearing
+request reports `unavailable`. Offline suite: 188 tests.
+
 Status, 2026-11-11 (issue #13 smoke): a live isolated-dsh tool turn failed with
 `MALFORMED_RESPONSE: The native response has no usage`. The streamed assistant
 message that carries a tool call can report usage with a null stop reason. The

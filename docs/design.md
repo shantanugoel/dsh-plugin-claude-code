@@ -126,6 +126,14 @@ The CLI writes one complete `/v1/messages` request body and one response body
 for each call. The plugin reads the newest SDK request after each response,
 reconstructs the thread delta when the CLI uses `message-threads-2026-08-12`,
 and compares the complete request with the launch plan and the observed native
+A live isolated-dsh profile run on 2026-11-11 stored `retentionAudit:
+"accepted"` for every turn of a tool turn. The capture accepts the CLI inert
+placeholder at any tool-list position, ignores the two JSON-Schema annotations
+that the SDK conversion removes on both sides, and records the joined user text.
+The complete recorded request keeps the actual native tool definitions. An
+image-bearing request reports `unavailable`, because the capture refuses image
+content; that path is unmeasured.
+
 blocks. It stores the existing `nativeRequestRecord` and sets `retentionAudit`
 to `accepted` only when that comparison passes. A missing, partial, oversize,
 redacted, or changed record leaves the audit `unavailable`; it is not a turn

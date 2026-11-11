@@ -374,6 +374,13 @@ The recorded import has these rules:
   outcomes; a result image stays a placeholder and does not reach the new
   generation.
 
+The CLI raw-body capture accepts the inert `DeferredToolPlaceholder` at any
+position of the tool list with its exact definition recorded. It ignores the
+object-level `description` and `additionalProperties` annotations that the SDK
+conversion removes on both sides. A text-only user input is recorded as the
+joined string that the native input queue sends. An image-bearing request is
+reported as `unavailable`.
+
 Use runtime validation for this data. Add response grouping and ordering fields
 as needed; they must remain lossless JSON. Do not recursively embed earlier
 dsh replay envelopes in the native request record. For the first version, a

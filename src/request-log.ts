@@ -139,6 +139,12 @@ export class RequestEvidenceCapture {
   }
 
   recordUserInput(content: readonly NativeContentBlock[]): void {
+    // The native input queue joins a text-only content list into one string.
+    // Record the same joined value so the request comparison stays exact.
+    if (content.every((block) => block.type === 'text')) {
+      this.userTexts.push(content.map((block) => block.type === 'text' ? block.text : '').join(''))
+      return
+    }
     for (const block of content) {
       if (block.type === 'text') this.userTexts.push(block.text)
       else this.unsupportedContent = true
@@ -383,16 +389,20 @@ export class RequestEvidenceCapture {
    * match, and the evidence record keeps it. Any other tool fails the audit.
    */
   private toolsAgree(tools: readonly unknown[]): boolean {
-    let start = 0
-    const first = tools[0]
-    if (isRecord(first) && first['name'] === CLI_INERT_PLACEHOLDER) {
-      if (first['description'] !== CLI_INERT_PLACEHOLDER_DESCRIPTION) return false
-      start = 1
+    // The CLI can insert the inert deferred-tool placeholder at any position of
+    // the declaration list. Accept it only with its exact full definition and
+    // drop it from the ordered comparison.
+    const declared: unknown[] = []
+    for (const tool of tools) {
+      if (isRecord(tool) && tool['name'] === CLI_INERT_PLACEHOLDER) {
+        if (tool['description'] !== CLI_INERT_PLACEHOLDER_DESCRIPTION) return false
+        continue
+      }
+      declared.push(tool)
     }
-    if (tools.length - start !== this.input.tools.length) return false
+    if (declared.length !== this.input.tools.length) return false
     for (let offset = 0; offset < this.input.tools.length; offset += 1) {
-      const index = start + offset
-      const recorded = tools[index]
+      const recorded = declared[offset]
       const expected = this.input.tools[offset] as ExpectedNativeTool
       if (!isRecord(recorded)) return false
       if (recorded['name'] !== expected.name) return false
@@ -480,6 +490,11 @@ function normalizeToolSchema(value: unknown): unknown {
     copy[key] = normalizeToolSchema(child)
   }
   if (copy['type'] === 'object') {
+    // The official SDK converts each declared JSON Schema to a Zod shape and
+    // back. That conversion removes these two object-level annotations. The
+    // audit ignores them on both sides and keeps the complete recorded body.
+    delete copy['description']
+    delete copy['additionalProperties']
     const properties = copy['properties']
     if (isRecord(properties) && Object.keys(properties).length === 0) delete copy['properties']
   }

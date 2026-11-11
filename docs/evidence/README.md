@@ -95,6 +95,18 @@ official `OTEL_LOG_RAW_API_BODIES` file diagnostic instead. The probe did not
 run the plugin inside dsh, and it did not measure an image, several trailing
 messages, signed-thinking retention, or another version pair.
 
+## Request-evidence profile check
+
+[request-evidence-dsh-2026-11-11.json](request-evidence-dsh-2026-11-11.json)
+records a live tool turn through the plugin in an isolated dsh headless profile
+on 2026-11-11. Every turn stored a complete native request record and set
+`retentionAudit: "accepted"`. The recorded tool list held the 23 dsh MCP tools
+and the CLI inert placeholder with its complete definition; the advisor tool was
+absent. The literal "only dsh MCP tools" item is not met because of the inert
+placeholder, and the design permits it only with its complete definition
+recorded. An image-bearing request reports `unavailable`. Raw captures stayed in
+a private temporary directory and are not committed.
+
 ## Limits
 
 - This was a direct `claude -p` probe, not the planned SDK plugin.

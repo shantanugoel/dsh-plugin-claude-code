@@ -20,8 +20,10 @@ cover the resolved model display name and the absent default effort. Rows O74 to
 O78 cover trailing user content inside a waiting tool turn. Rows O79 to O81 cover
 the live-shaped tool-turn transport shapes. Rows O82 to O88 cover the request
 image budget, the offload retry, and the retained-image generation threshold.
-They are offline tests. No live model request measured the rollover, a provider
-error, a configuration change, a live token meter, a live dsh compaction, or the
+Row O89 to O95 cover the request-evidence capture. Row O96 covers the live
+profile audit measurement. They are offline tests, except row O96, which is a
+live measurement. No live model request measured the rollover, a provider error,
+a configuration change, a live token meter, a live dsh compaction, or the
 provider image limit, and the tests claim no signed-thinking retention across any
 rollover or import.
 
@@ -167,13 +169,23 @@ result delivery, opened session, close request, and remaining child handle.
 | O94 | A changed system prompt block, a changed served model, a moved user text, a changed earlier signature, or a missing tool result | No `request-evidence` event; audit `unavailable` |
 | O95 | Generation close or a native start failure with the raw-body diagnostic enabled | The private directory is removed; no raw request body reaches git or the package |
 
+| O96 | A live tool turn through the plugin in an isolated dsh headless profile | Every turn stores a complete request record and `retentionAudit: "accepted"`; the tool list holds the 23 dsh MCP tools plus the recorded inert placeholder; an image-bearing request reports `unavailable` |
+
 O89 to O95 passed offline on 2026-11-11. The live probe summary is
 [request-evidence-probe-2026-11-11.json](evidence/request-evidence-probe-2026-11-11.json).
 It measured two turns through the official SDK with audit accepted, the dsh MCP
 tool plus one inert placeholder in the recorded list, and a reconstructed
 thread-delta second request. It did not produce a signed thinking block, so live
-signature retention is not measured. A live turn in an installed dsh profile is
-not measured; issue #13 covers it.
+signature retention is not measured.
+
+O96 is a live measurement, not an offline row. It ran on 2026-11-11 in an
+isolated dsh headless profile. Every turn of a tool turn stored a complete
+request record with audit accepted. The recorded list held the 23 dsh MCP tools
+and the inert placeholder; the advisor tool was absent. The literal "only dsh
+MCP tools" item is not met because of the inert placeholder, which the design
+permits only with its complete definition recorded. An image-bearing request
+reports `unavailable`. See
+[request-evidence-dsh-2026-11-11.json](evidence/request-evidence-dsh-2026-11-11.json).
 
 Use independent expected response data for thinking tests. A comparison that
 derives both expected and actual data from the altered request cannot detect a

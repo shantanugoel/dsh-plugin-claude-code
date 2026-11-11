@@ -1,0 +1,46 @@
+{
+  "measurement_date": "2026-11-11",
+  "issue": 7,
+  "decision": "D33 revision",
+  "scope": "live tool turn through the plugin in an isolated dsh headless profile",
+  "versions": {
+    "dsh_cli": "0.2.2-rc.1",
+    "node": "v26.13.0",
+    "sdk": "0.3.322",
+    "claude_cli": "2.1.319",
+    "plugin_git_commit": "f2dccce",
+    "platform": "macOS arm64"
+  },
+  "setup": {
+    "profile": "headless from the shipped template",
+    "dsh_home": "isolated temporary directory, not the user desktop profile",
+    "plugin_install": "local checkout link for the iteration; the GitHub spec install was measured separately in install-2026-11-11.json",
+    "route_override": "agent-default-model provider claude-code-session, model haiku",
+    "capture_source": "official CLI diagnostic OTEL_LOG_RAW_API_BODIES=file:<private dir>"
+  },
+  "result": {
+    "audit": "accepted",
+    "turns_with_accepted_audit": 4,
+    "recorded_tool_count": 24,
+    "recorded_dsh_mcp_tools": 23,
+    "recorded_inert_placeholder": "DeferredToolPlaceholder",
+    "advisor_present": false,
+    "complete_request_record_stored": true,
+    "image_bearing_request_audit": "unavailable"
+  },
+  "proven": [
+    "A live tool turn in an installed isolated dsh profile stores a complete native request record and sets retentionAudit accepted for every turn.",
+    "The recorded tool list holds the dsh MCP server tools and the CLI inert DeferredToolPlaceholder, whose full definition is recorded.",
+    "The advisor tool is absent from the recorded tool list."
+  ],
+  "not_proven": [
+    "The literal issue acceptance item 'the recorded tool list contains only the dsh MCP server tools' is not met: the CLI inserts one inert placeholder. The design permits it only with its complete definition recorded.",
+    "Signed-thinking signature retention is not measured by this run; the model produced no thinking block in these turns.",
+    "An image-bearing request reports unavailable because the capture refuses image content.",
+    "No supported launch control removed the inert placeholder; ENABLE_TOOL_SEARCH=0 and CLAUDE_CODE_DROP_UNAVAILABLE_DEFERRED_TOOL=1 were tried and did not remove it."
+  ],
+  "no_model_prompt_sent": false,
+  "inference_requests": 4,
+  "desktop_profile_used": false,
+  "raw_capture_committed": false
+}

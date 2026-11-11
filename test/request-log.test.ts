@@ -160,19 +160,17 @@ test('an unknown extra tool fails the tool comparison', async () => {
   assert.equal(await capture.capture(), undefined)
 })
 
-test('the documented inert placeholder is accepted and kept in the record', async () => {
+test('the documented inert placeholder is accepted at any position and kept in the record', async () => {
   const directory = diagnosticsDir()
-  const body = baseBody({
-    tools: [
-      { name: 'DeferredToolPlaceholder', description: 'Reserved placeholder that keeps deferred tool loading active; never call this tool.', input_schema: { type: 'object' } },
-      ...TOOLS.map((tool) => ({ name: tool.name, description: tool.description, input_schema: tool.input_schema })),
-    ],
-  })
+  // The live CLI inserted the placeholder between the dsh tools, not first.
+  const declared = TOOLS.map((tool) => ({ name: tool.name, description: tool.description, input_schema: tool.input_schema }))
+  declared.splice(1, 0, { name: 'DeferredToolPlaceholder', description: 'Reserved placeholder that keeps deferred tool loading active; never call this tool.', input_schema: { type: 'object' } })
+  const body = baseBody({ tools: declared })
   const { capture } = writeConverted(directory, body)
   const evidence = await capture.capture()
   assert.equal(retentionProofAccepted(evidence), true)
   const record = evidence as { body: { tools: { name: string }[] } }
-  assert.equal(record.body.tools[0]?.name, 'DeferredToolPlaceholder')
+  assert.equal(record.body.tools[1]?.name, 'DeferredToolPlaceholder')
 })
 
 test('a changed system prompt fails the system comparison', async () => {
