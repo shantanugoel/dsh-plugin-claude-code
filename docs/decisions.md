@@ -376,3 +376,27 @@ compaction summary support from the open capacity work and the recorded new
 generation from D21. The offline tests do not drive the full dsh compaction
 recovery, so this change does not claim that a retry after a context overflow
 succeeds.
+
+## D23. Recover a fixed-configuration change with a generation change
+
+Decision: do not declare `systemPromptUpdate` or `toolUpdate`. When the current
+request changes the system prompt, the tool list, the model, the effort, the
+output cap, or the workspace, start one new native generation with the current
+configuration. Use the recorded textual import from D21 for the history and the
+current pending content. Record `generationChange` with reason
+`configuration-change` and the changed fields in a stable order. Keep the
+existing refusals for an earlier-prefix edit, a developer message, unsupported
+content, and an exact repeat of a dispatched request.
+
+Reason: dsh sends the complete current prompt and tool list because this route
+declares no update capability. The plugin cannot send a mid-session prompt or
+tool update to a fixed native launch. A new generation is the supported path. A
+refusal made the plan-mode toggle, an MCP server change, and a model change end
+the dsh session.
+
+The new generation receives the new prompt and the complete current tool list.
+The old generation closes with a bounded close. A parked MCP handler is
+cancelled, not released with an invented result. The recorded import has no
+signed thinking. Do not claim signed-thinking retention across the change.
+
+Evidence: offline rows O58 to O61. No live model request measured this change.

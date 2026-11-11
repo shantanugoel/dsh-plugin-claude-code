@@ -89,9 +89,10 @@ test('a conversation request maps maxTokens to the documented output cap', async
   assert.equal(runtime.starts[0]?.launch?.env['CLAUDE_CODE_MAX_OUTPUT_TOKENS'], '1024')
 })
 
-test('a changed output cap requires a new generation', async () => {
+test('a changed output cap starts a new generation with the recorded change', async () => {
   const runtime = new ScriptedNativeRuntime()
   runtime.enqueue(textTurn('first'))
+  runtime.enqueue(textTurn('second', 'm2'))
   const { model } = makeAdapter({ runtime, spendGate: gate() })
   const firstRequest = { ...textRequest('hello', 'output-change'), maxTokens: 1_024 }
   const first = await collect(model, firstRequest)
@@ -104,12 +105,17 @@ test('a changed output cap requires a new generation', async () => {
       { role: 'user', content: [{ type: 'text', text: 'again' }] },
     ] as GenerateOptions['messages'],
   }
-  await assert.rejects(collect(model, second), (error: unknown) => {
-    assert.ok(error instanceof LlmError)
-    assert.equal(error.code, 'REBASE_REQUIRED')
-    return true
-  })
-  assert.equal(runtime.starts.length, 1)
+  const chunks = await collect(model, second)
+  assert.equal(chunks.at(-1)?.type, 'finish')
+  assert.equal(runtime.starts.length, 2)
+  assert.equal(runtime.starts[1]?.launch?.maxOutputTokens, 2_048)
+  const finish = chunks.at(-1)
+  const response = finish?.type === 'finish' ? finish.replayState?.response : undefined
+  const change = typeof response === 'object' && response !== null
+    ? (response as Record<string, unknown>)['generationChange'] as Record<string, unknown> | undefined
+    : undefined
+  assert.equal(change?.['reason'], 'configuration-change')
+  assert.deepEqual(change?.['changedFields'], ['maxTokens'])
 })
 
 test('an invalid output cap is refused before native start', async () => {

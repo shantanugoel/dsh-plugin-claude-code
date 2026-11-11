@@ -31,6 +31,12 @@ recorded textual import (D21), and the replay data holds the change record. No
 live model request measured the rollover. Signed-thinking retention across a
 rollover is not claimed.
 
+Status, 2026-11-11 (issue #5): M5 adds configuration-change rollover. The
+offline suite has 126 tests after this change merged. A prompt, tool, model,
+effort, output-cap, or workspace change starts one new generation with the
+current configuration and a recorded `configuration-change` (D23). No live model
+request measured this change.
+
 ## Fixed requirements
 
 - Minimum target: dsh 0.2.2-rc.1. Check each advertised later version.
@@ -141,8 +147,13 @@ outcomes. A complete synthetic dsh loop performs two steps on one fake session.
 - [x] Find the authoritative current workspace service and test it with two
   sessions. Do not infer it from the dsh server's process directory.
 - [x] Gate workspace, model, prompt, and tool changes on a live generation
-  before continuation. Return `REBASE_REQUIRED` until the configuration-change
-  rollover exists.
+  before continuation.
+- [x] Recover a fixed-configuration change with one new generation: new prompt,
+  tools, model, effort, output cap, or workspace, the recorded textual import,
+  and `generationChange` reason `configuration-change` with the changed fields.
+  Keep `REBASE_REQUIRED` for an earlier-prefix edit.
+- [x] Add offline tests O58 to O61: plan-mode prompt change on and off, tool
+  addition and removal, and model, effort, output-cap, and workspace changes.
 - [x] Find the supported dsh session replacement, compaction, and flush APIs.
   Confirm their persistence lifecycle; do not invent a hook name.
 - [x] Implement a plugin service/command that records a full context import at
@@ -168,8 +179,8 @@ outcomes. A complete synthetic dsh loop performs two steps on one fake session.
 
 Completion: minimum-version dsh tests cover edit, compaction, workspace change,
 model change, tool change, plugin unload, export/restore, missing replay state,
-and generation recovery after abort, timeout, process loss, restore, reload, and
-fork.
+generation recovery after abort, timeout, process loss, restore, reload, and
+fork, and fixed-configuration changes with a recorded change.
 
 ## M6. Add model catalog, settings, and installation checks
 

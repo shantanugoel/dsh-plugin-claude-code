@@ -54,9 +54,10 @@ Read `GenerateOptions.sessionId`, `messages`, `system`, `tools`, model,
 reasoning controls, limits, and abort signal. Reject an unsupported control
 before dispatch. Do not silently ignore sampling fields or stop sequences.
 A model that reports effort support offers that model's levels. The selected
-level is fixed for the native generation. A later change on a live generation
-returns `REBASE_REQUIRED`. A closed or absent generation recovers with a new
-generation and one recorded textual import.
+level is fixed for the native generation. A later change starts one new
+generation with the new level and a recorded `configuration-change`. A closed or
+absent generation recovers with a new generation and one recorded textual
+import. An earlier-prefix edit returns `REBASE_REQUIRED`.
 
 Resolve every model with `inputModalities: ['text', 'image']`. The catalog entry
 uses the same value. An image-capable route receives ImageBlock values. A
@@ -67,8 +68,8 @@ The price uses about one visual token for each 750 pixels.
 
 Map `maxTokens` to the official `CLAUDE_CODE_MAX_OUTPUT_TOKENS` child
 environment control. The exact value is part of the generation identity. A
-change returns `REBASE_REQUIRED`. The value is not a sampling field and must
-not be dropped. Reject a non-positive or non-integer value before dispatch.
+change starts one new generation with a recorded `configuration-change`. The
+value is not a sampling field and must not be dropped. Reject a non-positive or non-integer value before dispatch.
 
 Accept every auxiliary `purpose` value that the harness declares. Each
 auxiliary call uses a separate native session with the same admission checks. A
@@ -188,6 +189,7 @@ call ID; it can never release a conversation's pending tool results.
 | `NEW` | Validate configuration, auth, and spend policy | `STARTING` or `INVALID` |
 | `STARTING` | SDK initialization without a model prompt | `READY` or `INVALID` |
 | `READY` | Admit a new, validated user input | `GENERATING` |
+| `READY` or `WAITING_FOR_RESULTS` | Current fixed configuration differs from the live generation | `CLOSED`, then a new `STARTING` generation |
 | `GENERATING` | Receive a complete tool-call response | `WAITING_FOR_RESULTS` |
 | `GENERATING` | Receive a completed final response | `READY` |
 | `WAITING_FOR_RESULTS` | Validate the full dsh result batch and release it | `GENERATING` |
@@ -206,7 +208,9 @@ that enters `INVALID` never returns to `READY`.
 A recovery admission has kind `recovered`. It writes the complete frozen request
 to `committed`, so the next request compares equal and its publication binds.
 The new generation starts a new publication. It does not bind the pending
-publication of the replaced generation.
+publication of the replaced generation. A configuration change uses the same
+admission and closes the old generation. A parked MCP handler is cancelled, not
+released.
 
 An exact repeat of a request that the failed generation already dispatched
 returns `NATIVE_OUTCOME_UNKNOWN`. The adapter sends no second copy of that input.
@@ -289,6 +293,8 @@ The recorded import has these rules:
 - Do not send old native blocks as the import. The dsh log keeps them.
 - The successful turn stores one record. The import, not a saved signature, is
   the recovery evidence.
+- A `configuration-change` record has a non-empty `changedFields` list. The
+  order is model, effort, output cap, workspace, system prompt, and tools.
 
 Use runtime validation for this data. Add response grouping and ordering fields
 as needed; they must remain lossless JSON. Do not recursively embed earlier
@@ -375,9 +381,10 @@ durability through the agent-owned persistence lifecycle. A detached
 `ctx.sessions.create()` does not itself prove persistence. Do not invent an
 `agent/rebase` hook or mutate the agent's current frozen request.
 
-A fixed-configuration change on a live generation returns `REBASE_REQUIRED`.
-The next release must recover it with a recorded `configuration-change`. Do not
-mark edits and compaction as supported until their integration tests pass.
+A fixed-configuration change on a live generation starts one new generation
+with the current configuration and a recorded `configuration-change`. An
+earlier-prefix edit still returns `REBASE_REQUIRED`. Do not mark edits and
+compaction as supported until their integration tests pass.
 
 ## Authentication and spend checks
 
@@ -416,7 +423,7 @@ their names. They are non-retryable unless the failure is proven pre-dispatch.
 | `AUTH_ROUTE_REFUSED` | Authentication could use a disallowed billing route |
 | `BILLING_GUARD_UNAVAILABLE` | No accepted proof prevents a paid request |
 | `PAID_USAGE_REFUSED` | A paid route or paid-only model is known |
-| `REBASE_REQUIRED` | Prefix, workspace, model, effort, prompt, or tools changed |
+| `REBASE_REQUIRED` | An earlier message prefix or identity changed, or a reset has no balanced boundary |
 | `SESSION_BUSY` | Another stream owns admission for this native session |
 | `REPLAY_STATE_INVALID` | Replay data is missing or inconsistent |
 | `NATIVE_CONTEXT_MISMATCH` | Native prompt, tools, or context differ |

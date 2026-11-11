@@ -140,6 +140,9 @@ export function parseGenerationChange(value: unknown): GenerationChangeV1 | unde
   if (changedFields !== undefined && !isStringArray(changedFields)) {
     throw pluginFailure('REPLAY_STATE_INVALID', 'The generation change has invalid changed fields.')
   }
+  if (reason === 'configuration-change' && changedFields === undefined) {
+    throw pluginFailure('REPLAY_STATE_INVALID', 'A configuration change has no changed fields.')
+  }
   return {
     reason: reason as GenerationChangeReason,
     fromGenerationId,

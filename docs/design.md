@@ -245,10 +245,11 @@ configuration on the assumption that this audit will stop an unwanted operation.
 **6. Edits, compaction, model changes, and process loss**
 
 Any earlier-message edit, deletion, replacement, or tool-result pruning ends the
-generation. Never reuse the old signatures with the changed input. A prompt,
-tool-list, model, effort, workspace, or output-cap change on a live generation
-also ends it, and this release refuses that continuation. A later release
-recovers such a change with a new generation and a recorded configuration change.
+generation and is refused. Never reuse the old signatures with the changed
+input. A prompt, tool-list, model, effort, workspace, or output-cap change on a
+live generation also ends it. The adapter recovers that change with one new
+native generation and a recorded configuration change. It does not declare
+`systemPromptUpdate` or `toolUpdate`, because the native launch is fixed.
 
 If a tool call is pending and the generation cannot continue, stop the native
 process without supplying invented results. Let dsh settle its existing tool
@@ -274,9 +275,13 @@ continues earlier conversation, recover the session automatically:
    releases no old MCP handler.
 5. Store a `generationChange` record in the replay data of the successful turn.
    The record holds the reason (`abort`, `timeout`, `process-loss`, `restore`,
-   `fork`, or `invalid`), the replaced generation and CLI session ids when known,
-   the imported message count, the imported prefix hash, and the timestamp. The
-   dsh log keeps this record.
+   `fork`, `configuration-change`, or `invalid`), the replaced generation and
+   CLI session ids when known, the imported message count, the imported prefix
+   hash, and the timestamp. The dsh log keeps this record.
+6. A configuration change also records the changed fields in a stable order:
+   model, effort, output cap, workspace, system prompt, and tools. The new
+   native session receives the new values. An earlier-prefix edit still returns
+   `REBASE_REQUIRED` before any new generation starts.
 
 The replay data is the recorded import. This is a new model conversation. It
 does not keep the old signed thinking, and it does not claim to. The dsh session,

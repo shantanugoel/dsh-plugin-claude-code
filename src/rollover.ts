@@ -26,8 +26,8 @@ export const IMPORT_MAX_TEXT_CHARS = 8_000
 /** Upper bound of one quoted tool-argument value in the import. */
 export const IMPORT_MAX_ARGUMENT_CHARS = 4_000
 
-/** The closed generation that the new generation replaces. */
-export interface RolloverDeadGeneration {
+/** The generation that the new generation replaces. It can be closed or live. */
+export interface RolloverReplacedGeneration {
   readonly generationId: string
   readonly cliSessionId: string | null
   readonly committed: readonly CanonicalMessage[]
@@ -38,7 +38,9 @@ export interface RolloverDeadGeneration {
 export interface RolloverInput {
   readonly messages: readonly LooseMessage[]
   readonly reason: GenerationChangeReason
-  readonly dead?: RolloverDeadGeneration
+  readonly replaced?: RolloverReplacedGeneration
+  /** Configuration fields that changed, for reason `configuration-change`. */
+  readonly changedFields?: readonly string[]
   readonly now?: Date
 }
 
@@ -65,7 +67,7 @@ export interface RolloverPlan {
  * 2. The history ends at the last assistant message. A tool batch after that
  *    message is a completed tool outcome and is quoted in the import.
  * 3. Without an assistant message, the last dispatched request or the
- *    committed prefix of the dead generation is the history boundary.
+ *    committed prefix of the replaced generation is the history boundary.
  *
  * The caller sends `importedText` plus `pendingUserContent` as one user turn.
  * The function does not read image bytes and does not include a signature.
@@ -76,25 +78,30 @@ export function planRollover(input: RolloverInput): RolloverPlan {
     throw pluginFailure('UNSUPPORTED_INPUT', 'The recovery request has no message.')
   }
   const requestHash = contentHash(projected)
-  const dead = input.dead
-  if (dead?.dispatchedHash !== undefined && dead.dispatchedHash === requestHash) {
+  const replaced = input.replaced
+  if (replaced?.dispatchedHash !== undefined && replaced.dispatchedHash === requestHash) {
     throw pluginFailure(
       'NATIVE_OUTCOME_UNKNOWN',
       'This request was already dispatched. It was not sent again.',
     )
   }
-  const split = splitBoundary(projected, input.messages, dead)
+  if (input.reason === 'configuration-change'
+    && (input.changedFields === undefined || input.changedFields.length === 0)) {
+    throw pluginFailure('UNSUPPORTED_INPUT', 'A configuration change needs its changed fields.')
+  }
+  const split = splitBoundary(projected, input.messages, replaced)
   const importedText = historicalImportText({
     imported: split.importedMessages,
     hasPendingUserContent: split.pendingUserContent.length > 0,
   })
   const generationChange: GenerationChangeV1 = {
     reason: input.reason,
-    fromGenerationId: dead?.generationId ?? null,
-    fromCliSessionId: dead?.cliSessionId ?? null,
+    fromGenerationId: replaced?.generationId ?? null,
+    fromCliSessionId: replaced?.cliSessionId ?? null,
     importedMessageCount: split.importedMessages.length,
     importedPrefixHash: contentHash(split.importedMessages),
     createdAt: (input.now ?? new Date()).toISOString(),
+    ...(input.changedFields === undefined ? {} : { changedFields: [...input.changedFields] }),
   }
   return {
     requestHash,
@@ -116,7 +123,7 @@ interface BoundarySplit {
 function splitBoundary(
   projected: readonly CanonicalMessage[],
   raw: readonly LooseMessage[],
-  dead: RolloverDeadGeneration | undefined,
+  replaced: RolloverReplacedGeneration | undefined,
 ): BoundarySplit {
   const lastAssistant = findLastAssistant(projected)
   if (lastAssistant >= 0) {
@@ -152,14 +159,14 @@ function splitBoundary(
     const pendingUserContent = pendingRaw.flatMap((message) => outgoingBlocks(message.content))
     return { importedMessages, pendingUserContent, pendingToolResults }
   }
-  if (dead === undefined) {
+  if (replaced === undefined) {
     throw pluginFailure(
       'REPLAY_STATE_INVALID',
-      'The recovery request has no assistant history and no closed generation.',
+      'The recovery request has no assistant history and no replaced generation.',
     )
   }
-  const boundary = matchingPrefixLength(projected, dead.dispatchedMessages)
-    ?? matchingPrefixLength(projected, dead.committed)
+  const boundary = matchingPrefixLength(projected, replaced.dispatchedMessages)
+    ?? matchingPrefixLength(projected, replaced.committed)
   if (boundary === undefined) {
     throw pluginFailure(
       'REBASE_REQUIRED',

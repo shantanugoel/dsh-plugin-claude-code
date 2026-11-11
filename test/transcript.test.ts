@@ -299,43 +299,46 @@ test('missing or changed replay data is refused', async () => {
   assert.deepEqual(runtime.inputs.map(inputText), ['hello'])
 })
 
-test('prompt, tool, model, and workspace changes require a new generation', async () => {
+test('a live configuration change rolls over with a recorded change', async () => {
   const runtime = new ScriptedNativeRuntime()
-  runtime.enqueue(textTurn('answer'))
-  runtime.enqueue(textTurn('answer'))
-  runtime.enqueue(textTurn('answer'))
-  runtime.enqueue(textTurn('answer'))
-  let workspace = ''
-  const { model, workspace: initial } = makeAdapter({
-    runtime,
-    spendGate: gate(),
-    workspace: { current: () => workspace },
+  runtime.enqueue(textTurn('answer', 'm1'))
+  runtime.enqueue(textTurn('answer after change', 'm2'))
+  runtime.enqueue(textTurn('answer after continuation', 'm3'))
+  const { model } = makeAdapter({ runtime, spendGate: gate() })
+  const firstRequest: GenerateOptions = textRequest('hello', 'session-a')
+  const first = await collect(model, firstRequest)
+  assert.equal(first.at(-1)?.type, 'finish')
+  const changedRequest: GenerateOptions = {
+    ...textRequest('next', 'session-a'),
+    system: 'Other prompt.',
+    messages: [
+      ...firstRequest.messages,
+      assistantMessage(first, 'assistant-1'),
+      { role: 'user', content: [{ type: 'text', text: 'next' }] },
+    ] as GenerateOptions['messages'],
+  }
+  const changed = await collect(model, changedRequest)
+  assert.equal(changed.at(-1)?.type, 'finish')
+  assert.equal(runtime.starts.length, 2)
+  assert.equal(runtime.starts[1]?.systemPrompt, 'Other prompt.')
+  const finish = changed.at(-1)
+  const response = finish?.type === 'finish' ? finish.replayState?.response : undefined
+  const recorded = typeof response === 'object' && response !== null
+    ? (response as Record<string, unknown>)['generationChange'] as Record<string, unknown> | undefined
+    : undefined
+  assert.equal(recorded?.['reason'], 'configuration-change')
+  assert.deepEqual(recorded?.['changedFields'], ['systemPrompt'])
+  const continued = await collect(model, {
+    ...changedRequest,
+    messages: [
+      ...changedRequest.messages,
+      assistantMessage(changed, 'assistant-2'),
+      { role: 'user', content: [{ type: 'text', text: 'later' }] },
+    ] as GenerateOptions['messages'],
   })
-  workspace = initial
-  await collect(model, textRequest('hello', 'session-a'))
-  await assert.rejects(collect(model, { ...textRequest('hello', 'session-a'), system: 'Other prompt.' }), (error: unknown) => {
-    assert.ok(error instanceof LlmError)
-    assert.equal(error.code, 'REBASE_REQUIRED')
-    return true
-  })
-  await assert.rejects(collect(model, { ...textRequest('hello', 'session-a'), tools: ECHO_TOOL }), (error: unknown) => {
-    assert.ok(error instanceof LlmError)
-    assert.equal(error.code, 'REBASE_REQUIRED')
-    return true
-  })
-  await assert.rejects(collect(model, { ...textRequest('hello', 'session-a'), model: 'claude-sonnet-5' }), (error: unknown) => {
-    assert.ok(error instanceof LlmError)
-    assert.equal(error.code, 'REBASE_REQUIRED')
-    return true
-  })
-  workspace = `${initial}-other`
-  await assert.rejects(collect(model, textRequest('hello', 'session-a')), (error: unknown) => {
-    assert.ok(error instanceof LlmError)
-    assert.equal(error.code, 'REBASE_REQUIRED')
-    return true
-  })
-  assert.equal(runtime.starts.length, 1)
-  assert.deepEqual(runtime.inputs.map(inputText), ['hello'])
+  assert.equal(continued.at(-1)?.type, 'finish')
+  assert.equal(runtime.starts.length, 2)
+  assert.equal(runtime.sessions[1]?.inputs.length, 2)
 })
 
 test('abort closes the native session and invents no tool result', async () => {

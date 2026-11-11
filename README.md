@@ -88,11 +88,13 @@ runs each call with its own sandbox and approvals.
   text. The plugin reads no bytes for that occurrence.
 - **Output cap.** A dsh `maxTokens` control maps to the official
   `CLAUDE_CODE_MAX_OUTPUT_TOKENS` environment control for that native session.
-- **Recovery.** If the Claude session stops, the plugin starts a new one and
-  sends a recorded text import of the earlier conversation plus your new input.
-  This applies after Stop, a generation timeout, a lost Claude process, a dsh
-  restore or reload, and a forked subagent. The dsh session continues. The
-  import does not keep the old signed thinking.
+- **Recovery and configuration changes.** If the Claude session stops, or if
+  the prompt, tools, model, effort, output cap, or workspace change, the plugin
+  starts a new Claude session and sends a recorded text import of the earlier
+  conversation plus your new input with the new configuration. This applies
+  after Stop, a generation timeout, a lost Claude process, a dsh restore or
+  reload, a forked subagent, a plan-mode toggle, and an MCP tool change. The dsh
+  session continues. The import does not keep the old signed thinking.
 - **Truncated answers.** A turn that stops at the output-token limit gets a
   `max-tokens` finish. The answer is incomplete. The plugin never reports this
   turn as a normal stop.
@@ -122,9 +124,11 @@ message.
 - The plugin does not remove old images from the live native session. A session
   with a very large number of retained images can reach the provider image
   limit. Start a recorded new generation in that case.
-- A prompt, tool, model, effort, output-cap, or workspace change on a live
-  session returns `REBASE_REQUIRED`. Start a new dsh session. A closed Claude
-  session recovers automatically.
+- A prompt, tool, model, effort, output-cap, or workspace change starts a new
+  Claude session with the new configuration and a recorded text import. The dsh
+  session continues.
+- An edit to earlier messages still returns `REBASE_REQUIRED`. Start a new dsh
+  session for an edit.
 - Recovery starts a new Claude session. It does not keep the earlier signed
   thinking, because the new session starts a new thinking chain. The earlier
   events stay in the dsh log.

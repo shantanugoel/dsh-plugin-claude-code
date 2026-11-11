@@ -2,8 +2,20 @@
 
 Use three test layers. Keep the result of each layer separate.
 
-Offline status on 2026-11-11: the Node suite covers rows O01 through O57 with
-synthetic data and the scripted runtime, and 117 tests pass. The dsh 0.2.2-rc.1
+Offline status on 2026-11-11: the Node suite covers rows O01 through O61 with
+synthetic data and the scripted runtime, and 126 tests pass. The dsh 0.2.2-rc.1
+LLM service, session store, and compaction balance functions are loaded in that
+suite. The real dsh LLM runtime is mounted for file and image projection tests
+and for the native error finish test. The agent loop is not driven. No offline
+command starts the installed Claude binary. The distribution checks I01 to I06
+also passed on 2026-11-11.
+
+Rows O43 to O52 cover generation recovery with a recorded textual import. Rows
+O53 to O57 cover native turn-error mapping and truncated answers. Rows O58 to
+O61 cover a fixed-configuration change with the same recorded-import mechanism.
+They are offline tests. No live model request measured the rollover, a provider
+error, or a configuration change, and the tests claim no signed-thinking
+retention across a rollover or a configuration change.
 LLM service, session store, and compaction balance functions are loaded in that
 suite. The real dsh LLM runtime is mounted for file and image projection tests
 and for the native error finish test. The agent loop is not driven. No offline
@@ -77,7 +89,7 @@ result delivery, opened session, close request, and remaining child handle.
 | O16 | Earlier message content, identity, or order changes | `REBASE_REQUIRED` before continuation |
 | O17 | New dsh assistant ID after finish | Bind once only when the expected publication matches |
 | O18 | Missing or changed replay state | `REPLAY_STATE_INVALID`; no silent thinking removal |
-| O19 | Prompt, tools, model, reasoning control, or workspace changes on a live generation | `REBASE_REQUIRED`; a closed generation recovers with one recorded import |
+| O19 | Prompt, tools, model, reasoning control, or workspace changes on a live generation | One new generation with the current configuration and a recorded `configuration-change`; an earlier-prefix edit still returns `REBASE_REQUIRED` |
 | O20 | User/developer update appears inside a tool-result suffix | Refuse; do not silently relocate the update |
 | O21 | Two sessions in different workspaces | Separate processes, prompts, maps, and results |
 | O22 | Title or summary call during a parked tool | Separate auxiliary session; original call stays parked |
@@ -116,6 +128,10 @@ result delivery, opened session, close request, and remaining child handle.
 | O55 | Assistant message or result with `stop_reason` `max_tokens` | Exactly one `max-tokens` finish, no `stop` finish, replay state present |
 | O56 | Error result after a complete assistant stop | No second report and no `turn-error` event; the complete response stays usable |
 | O57 | Execution error, unknown result subtype, and a truncated turn with a tool call | `NATIVE_OUTCOME_UNKNOWN` for `error_during_execution`; `MALFORMED_RESPONSE` for an unknown subtype; the truncated call is not executed |
+| O58 | Plan-mode prompt section on then off | Each change starts one new generation with the new prompt and reason `configuration-change`; the same dsh session continues; the next request uses the new session |
+| O59 | Tool addition then tool removal | New generation each time with the complete current tool list and `changedFields` equal `['tools']`; the new generation releases a tool result through its own bridge |
+| O60 | Model, effort, output cap, or workspace change | One new generation with the new value and `changedFields` in stable order; no `REBASE_REQUIRED`; a prompt change during a tool wait imports the completed outcome |
+| O61 | A configuration change with an earlier-prefix edit or an exact repeat | Refuse before any new native start; keep the edit and repeat rules |
 
 Use independent expected response data for thinking tests. A comparison that
 derives both expected and actual data from the altered request cannot detect a
@@ -233,9 +249,9 @@ proof, and live content/retention tests on the advertised runtime pair. Report
 the live negative-test status explicitly. If it is unavailable, do not advertise
 full live tamper certification. Do not spend money to test a no-spend assertion.
 
-Offline rows O43 to O52 cover generation recovery. No live measurement has run
-for the rollover. The import is ordinary user content, and it is not proof of
-signed-thinking retention. Keep native resume, binary protocol changes, image
+Offline rows O43 to O56 cover generation recovery and configuration changes. No
+live measurement has run for either path. The import is ordinary user content,
+and it is not proof of signed-thinking retention. Keep native resume, binary protocol changes, image
 offload on long sessions, document input, and additional content types outside
 the compatibility claim until their own measurements pass. The 2026-11-11 image probe measured one image
 in a user message and one image in a tool result. It did not measure many images,

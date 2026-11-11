@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import { test } from 'node:test'
 
 import { Context } from '@deepseek-ai/cordis'
-import { LlmError, LlmRuntime } from '@deepseek-ai/dsh-llm'
+import { LlmError, LlmRuntime, type GenerateOptions, type StreamChunk } from '@deepseek-ai/dsh-llm'
 import { SessionStore } from '@deepseek-ai/dsh-session'
 
 import { blockedRouteDescriptor, projectCatalogModel } from '../src/catalog.js'
@@ -107,20 +107,52 @@ test('a model reports only its own effort levels', async () => {
   const older = await model.resolveModel('claude-code-session', 'claude-haiku-4-5-20251001')
   assert.equal(older.reasoning, undefined)
   runtime.enqueue(textTurn('ok'))
-  const chunks = []
-  for await (const chunk of model.stream({ ...textRequest('hello', 'effort-1'), model: 'haiku', reasoningEffort: 'high' as never })) {
+  runtime.enqueue(textTurn('ok', 'm2'))
+  const firstRequest: GenerateOptions = {
+    ...textRequest('hello', 'effort-1'),
+    model: 'haiku',
+    reasoningEffort: 'high' as never,
+  }
+  const chunks: StreamChunk[] = []
+  for await (const chunk of model.stream(firstRequest)) {
     chunks.push(chunk)
   }
   assert.equal(chunks.at(-1)?.type, 'finish')
   assert.equal(runtime.starts[0]?.launch?.effort, 'high')
-  await assert.rejects(
-    model.stream({ ...textRequest('hello', 'effort-1'), model: 'haiku', reasoningEffort: 'max' as never })[Symbol.asyncIterator]().next(),
-    (error: unknown) => {
-      assert.ok(error instanceof LlmError)
-      assert.equal(error.code, 'REBASE_REQUIRED')
-      return true
-    },
-  )
+  const firstFinish = chunks.at(-1)
+  const replayState = firstFinish?.type === 'finish' ? firstFinish.replayState : undefined
+  const secondRequest: GenerateOptions = {
+    ...firstRequest,
+    reasoningEffort: 'max' as never,
+    messages: [
+      ...firstRequest.messages,
+      {
+        role: 'assistant',
+        id: 'assistant-1',
+        content: chunks.flatMap((chunk) => chunk.type === 'block-end' ? [chunk.block] : []),
+        source: {
+          kind: 'model',
+          provider: 'claude-code-session',
+          model: 'haiku',
+          ...(replayState === undefined ? {} : { replayState }),
+        },
+      },
+      { role: 'user', content: [{ type: 'text', text: 'again' }] },
+    ] as GenerateOptions['messages'],
+  }
+  const secondChunks: StreamChunk[] = []
+  for await (const chunk of model.stream(secondRequest)) {
+    secondChunks.push(chunk)
+  }
+  assert.equal(secondChunks.at(-1)?.type, 'finish')
+  assert.equal(runtime.starts.length, 2)
+  assert.equal(runtime.starts[1]?.launch?.effort, 'max')
+  const secondFinish = secondChunks.at(-1)
+  const secondResponse = secondFinish?.type === 'finish' ? secondFinish.replayState?.response : undefined
+  const change = typeof secondResponse === 'object' && secondResponse !== null
+    ? (secondResponse as Record<string, unknown>)['generationChange'] as Record<string, unknown> | undefined
+    : undefined
+  assert.deepEqual(change?.['changedFields'], ['reasoningEffort'])
   await assert.rejects(
     model.stream({ ...textRequest('hello', 'effort-2'), model: 'claude-sonnet-4-6', reasoningEffort: 'xhigh' as never })[Symbol.asyncIterator]().next(),
     (error: unknown) => {
@@ -129,7 +161,7 @@ test('a model reports only its own effort levels', async () => {
       return true
     },
   )
-  assert.equal(runtime.starts.length, 1)
+  assert.equal(runtime.starts.length, 2)
 })
 
 test('a prepared call refuses a configuration change before dispatch', async () => {

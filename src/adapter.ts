@@ -326,7 +326,7 @@ export class ClaudeCodeAdapter extends LlmAdapter {
     if (live !== undefined) {
       const deadReason = deadGenerationReason(live)
       if (deadReason === undefined) {
-        yield* this.continueGeneration(live, options, workspace, prompt, toolsCanonical, effort)
+        yield* this.continueGeneration(live, options, workspace, sessionId, prompt, toolsCanonical, effort)
         return
       }
       yield* this.recoverGeneration(options, workspace, sessionId, live, deadReason, effort)
@@ -342,26 +342,19 @@ export class ClaudeCodeAdapter extends LlmAdapter {
     yield* this.recoverGeneration(options, workspace, sessionId, undefined, reason, effort)
   }
 
-  /** Continue the healthy live generation. A fixed-configuration change refuses. */
+  /**
+   * Continue the healthy live generation. A changed fixed configuration starts
+   * one new generation with the new configuration and a recorded import.
+   */
   private async *continueGeneration(
     live: LiveGeneration,
     options: GenerateOptions,
     workspace: string,
+    sessionId: string,
     prompt: string,
     toolsCanonical: string,
     effort: ClaudeEffort | undefined,
   ): AsyncIterable<StreamChunk> {
-    if (live.model !== options.model
-      || live.effort !== effort
-      || live.maxOutputTokens !== options.maxTokens
-      || live.workspace !== workspace
-      || live.systemPrompt !== prompt
-      || live.toolsCanonical !== toolsCanonical) {
-      throw pluginFailure(
-        'REBASE_REQUIRED',
-        'The model, effort, output cap, workspace, prompt, or tools changed. Start a recorded new generation.',
-      )
-    }
     const admission = admitTranscript({
       messages: options.messages,
       waitingForResults: live.phase === 'WAITING_FOR_RESULTS',
@@ -371,6 +364,19 @@ export class ClaudeCodeAdapter extends LlmAdapter {
         dispatchedHash: live.dispatchedHash,
       },
     })
+    const changedFields = changedConfigurationFields(live, options, workspace, prompt, toolsCanonical, effort)
+    if (changedFields.length > 0) {
+      yield* this.recoverGeneration(
+        options,
+        workspace,
+        sessionId,
+        live,
+        'configuration-change',
+        effort,
+        changedFields,
+      )
+      return
+    }
     // Prepare every image and result before the native boundary. A refusal
     // here sends nothing, so the same step can retry after a repair. If tool
     // handlers are parked, release them with an error instead of leaving them
@@ -430,27 +436,29 @@ export class ClaudeCodeAdapter extends LlmAdapter {
     options: GenerateOptions,
     workspace: string,
     sessionId: string,
-    dead: LiveGeneration | undefined,
+    replaced: LiveGeneration | undefined,
     reason: GenerationChangeReason,
     effort: ClaudeEffort | undefined,
+    changedFields?: readonly string[],
   ): AsyncIterable<StreamChunk> {
     const plan = planRollover({
       messages: options.messages,
       reason,
-      ...(dead === undefined ? {} : {
-        dead: {
-          generationId: dead.generationId,
-          cliSessionId: recordedCliSessionId(dead),
-          committed: dead.committed,
-          dispatchedMessages: dead.dispatchedMessages,
-          dispatchedHash: dead.dispatchedHash,
+      ...(replaced === undefined ? {} : {
+        replaced: {
+          generationId: replaced.generationId,
+          cliSessionId: recordedCliSessionId(replaced),
+          committed: replaced.committed,
+          dispatchedMessages: replaced.dispatchedMessages,
+          dispatchedHash: replaced.dispatchedHash,
         },
       }),
+      ...(changedFields === undefined ? {} : { changedFields }),
     })
     const pendingContent = plan.pendingUserContent.length === 0
       ? []
       : await this.prepareContent(plan.pendingUserContent, options.signal)
-    if (dead !== undefined) await this.dependencies.sessions.closeKey(dead.key)
+    if (replaced !== undefined) await this.dependencies.sessions.closeKey(replaced.key)
     const generationId = this.dependencies.sessions.nextGeneration(sessionId)
     const key = `${sessionId}:${generationId}`
     const live = await this.ensureSession(undefined, key, options, workspace, false, generationId, effort)
@@ -751,6 +759,28 @@ function deadGenerationReason(live: LiveGeneration): GenerationChangeReason | un
 function recordedCliSessionId(live: LiveGeneration): string | null {
   const id = live.native.identity.cliSessionId
   return id.trim() === '' || id === 'pending' ? null : id
+}
+
+/**
+ * Fixed generation configuration fields that differ from the current request.
+ * The order is stable so the recorded list is deterministic.
+ */
+function changedConfigurationFields(
+  live: LiveGeneration,
+  options: GenerateOptions,
+  workspace: string,
+  prompt: string,
+  toolsCanonical: string,
+  effort: ClaudeEffort | undefined,
+): string[] {
+  const changed: string[] = []
+  if (live.model !== options.model) changed.push('model')
+  if (live.effort !== effort) changed.push('reasoningEffort')
+  if (live.maxOutputTokens !== options.maxTokens) changed.push('maxTokens')
+  if (live.workspace !== workspace) changed.push('workspace')
+  if (live.systemPrompt !== prompt) changed.push('systemPrompt')
+  if (live.toolsCanonical !== toolsCanonical) changed.push('tools')
+  return changed
 }
 
 function blockType(block: { readonly type?: unknown }): string {
