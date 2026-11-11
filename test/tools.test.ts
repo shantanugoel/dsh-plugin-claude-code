@@ -145,6 +145,29 @@ test('tool calls stay on one scripted session and dsh supplies the only result',
   assert.equal(runtime.starts.length, 1)
 })
 
+test('a native response with the MCP-qualified tool name resolves to the dsh name', async () => {
+  const accepted = interpretAuthStatus({ stdout: SYNTHETIC_AUTH_STATUS, exitCode: 0 })
+  const runtime = new ScriptedNativeRuntime()
+  runtime.enqueue({ events: toolEvents([{ id: 'call-1', name: 'mcp__dsh__dsh__echo', arguments: '{}' }]) })
+  runtime.enqueue(textTurn('done', 'm2'))
+  const { model } = makeAdapter({
+    runtime,
+    spendGate: new EvidenceSpendGate(proof(accepted.identityBinding), NOW),
+    deadlines: { ...DEFAULT_DEADLINES, resultWaitMs: 5_000 },
+  })
+  const firstRequest = {
+    ...textRequest(),
+    tools: [{ name: 'echo', description: 'Echo text.', parameters: { type: 'object' as const } }],
+  }
+  const first = await collect(model, firstRequest)
+  assert.deepEqual(toolIds(first), ['call-1'])
+  const blocks = first.flatMap((chunk) => chunk.type === 'block-end' ? [chunk.block] : [])
+  const call = blocks.find((block) => block.type === 'tool-call')
+  assert.equal(call?.type === 'tool-call' ? call.name : undefined, 'echo')
+  const finish = first.at(-1)
+  assert.equal(finish?.type === 'finish' ? finish.reason.kind : undefined, 'tool-calls')
+})
+
 test('a bad tool-result suffix releases nothing', async () => {
   const accepted = interpretAuthStatus({ stdout: SYNTHETIC_AUTH_STATUS, exitCode: 0 })
   const runtime = new ScriptedNativeRuntime()

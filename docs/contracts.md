@@ -214,6 +214,11 @@ turns that throw into a terminal `error` finish. The agent
 `dsh-compaction-basic` runs its context-overflow recovery only for
 `CONTEXT_WINDOW_EXCEEDED`.
 
+Keep at most one usage event for a native turn. The SDK can report usage on an
+assistant message whose `stop_reason` is null: emit that usage anyway, and add
+the synthetic `tool_use` stop after it. The result message supplies usage when
+no assistant message has it.
+
 ## Session identity and state
 
 Key each live session by the dsh session ID and plugin generation ID. The map
@@ -374,6 +379,14 @@ double publication. Use the native message ID plus block index as the key.
 `message_stop` with its final stop reason determines the complete batch. Do not
 wait for the final SDK query result while a tool handler is parked; that would
 deadlock. Confirm the ordering with the selected SDK.
+
+The MCP request extra from CLI 2.1.319 names the tool-use id as
+`_meta['claudecode/toolUseId']`. Accept that spelling and any key that normalizes
+to a tool-use id, so a newer CLI spelling does not lose the call correlation.
+A streamed assistant message can carry usage while its stop reason is null, and
+one API message can arrive as several assistant messages with the same id and
+one block each. Emit usage independent of the stop reason, fold it to one event
+for each native turn, and continue block indexes across that split.
 
 Preserve the provider tool-use ID as the dsh call ID. Do not correlate only by
 tool name or argument equality. If tool IDs are absent from the handler API,

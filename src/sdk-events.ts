@@ -55,20 +55,95 @@ export function readToolUseId(extra: unknown): string | undefined {
  * Translate one completed assistant message into native events.
  * Empty thinking text stays present when the block exists.
  * A max_tokens stop stays a truncation, not a normal stop.
+ * Usage is independent of the stop reason: the CLI attaches it to streamed
+ * assistant messages whose stop_reason is null.
  */
-export function eventsFromAssistant(message: LooseAssistantMessage): NativeEvent[] {
+export function eventsFromAssistant(message: LooseAssistantMessage, startIndex = 0): NativeEvent[] {
   const messageId = typeof message.id === 'string' && message.id.trim() !== '' ? message.id : 'assistant'
   const content = message.content ?? []
   const events: NativeEvent[] = []
-  content.forEach((block, index) => {
-    const snapshot = snapshotFor(messageId, index, block)
+  content.forEach((block, offset) => {
+    const snapshot = snapshotFor(messageId, startIndex + offset, block)
     if (snapshot !== undefined) events.push(snapshot)
   })
+  pushUsage(events, message.usage)
   const stopReason = message.stop_reason
   if (stopReason !== 'end_turn' && stopReason !== 'tool_use' && stopReason !== 'max_tokens') return events
-  pushUsage(events, message.usage)
   events.push({ type: 'message-stop', messageId, stopReason })
   return events
+}
+
+/** Folding state for one native turn. At most one usage event is kept. */
+export interface NativeTurnState {
+  readonly messageId: string
+  readonly stopSent: boolean
+  readonly usageSent: boolean
+  /** Content blocks already emitted for the current native message id. */
+  readonly blockCount: number
+}
+
+/** Start a new native turn. */
+export function newNativeTurn(): NativeTurnState {
+  return { messageId: 'assistant', stopSent: false, usageSent: false, blockCount: 0 }
+}
+
+/**
+ * Fold events into one native turn. The SDK can report usage on more than one
+ * message of a turn, and the dsh translation refuses a repeated usage. Keep
+ * the first usage event and remember the newest message id and stop.
+ */
+export function foldTurnEvents(
+  state: NativeTurnState,
+  events: readonly NativeEvent[],
+): { readonly state: NativeTurnState; readonly events: NativeEvent[] } {
+  let next = state
+  const kept: NativeEvent[] = []
+  for (const event of events) {
+    if (event.type === 'usage') {
+      if (next.usageSent) continue
+      next = { ...next, usageSent: true }
+    }
+    if (event.type === 'block-start' || event.type === 'block-snapshot' || event.type === 'message-stop') {
+      next = { ...next, messageId: event.messageId }
+      if (event.type === 'message-stop') next = { ...next, stopSent: true }
+    }
+    kept.push(event)
+  }
+  return { state: next, events: kept }
+}
+
+/**
+ * Fold one completed assistant message into a native turn.
+ *
+ * A tool-call block with no explicit stop adds the synthetic tool_use stop
+ * after the usage, so a tool turn ends with both its usage and its stop.
+ */
+export function advanceAssistantTurn(
+  state: NativeTurnState,
+  message: LooseAssistantMessage,
+): { readonly state: NativeTurnState; readonly events: NativeEvent[] } {
+  // The CLI can split one API message into several assistant messages with the
+  // same id and one content block each. Continue the block indexes across that
+  // split so the translation does not see two blocks at the same index.
+  const messageId = typeof message.id === 'string' && message.id.trim() !== '' ? message.id : 'assistant'
+  const startIndex = state.messageId === messageId ? state.blockCount : 0
+  const contentLength = message.content?.length ?? 0
+  const folded = foldTurnEvents(state, eventsFromAssistant(message, startIndex))
+  const counted: NativeTurnState = {
+    ...folded.state,
+    messageId,
+    blockCount: startIndex + contentLength,
+  }
+  const hasTool = folded.events.some((event) => event.type === 'block-snapshot' && event.blockType === 'tool-call')
+  if (!hasTool || counted.stopSent) return { state: counted, events: folded.events }
+  const stopped: NativeTurnState = { ...counted, stopSent: true }
+  return {
+    state: stopped,
+    events: [
+      ...folded.events,
+      { type: 'message-stop', messageId: stopped.messageId, stopReason: 'tool_use' },
+    ],
+  }
 }
 
 /**
@@ -150,9 +225,16 @@ function snapshotFor(messageId: string, index: number, block: LooseBlock): Nativ
 function readId(extra: unknown, depth: number): string | undefined {
   if (depth > 2 || typeof extra !== 'object' || extra === null) return undefined
   const record = extra as Record<string, unknown>
-  for (const key of ['toolUseID', 'tool_use_id', 'toolUseId']) {
+  for (const key of ['toolUseID', 'tool_use_id', 'toolUseId', 'claudecode/toolUseId']) {
     const value = record[key]
     if (typeof value === 'string' && value.trim() !== '') return value
+  }
+  // The MCP request extra can namespace the id. Accept any key that names a
+  // tool-use id, so a newer CLI spelling does not lose the call correlation.
+  for (const [key, value] of Object.entries(record)) {
+    if (typeof value !== 'string' || value.trim() === '') continue
+    const normalized = key.toLowerCase().replace(/[^a-z0-9]/gu, '')
+    if (normalized.endsWith('tooluseid') || normalized === 'tooluseid') return value
   }
   return readId(record['_meta'], depth + 1)
 }

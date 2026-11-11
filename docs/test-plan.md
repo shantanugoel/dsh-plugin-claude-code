@@ -3,7 +3,7 @@
 Use three test layers. Keep the result of each layer separate.
 
 Offline status on 2026-11-11: the Node suite covers rows O01 through O78 with
-synthetic data and the scripted runtime, and 159 tests pass. The dsh 0.2.2-rc.1
+synthetic data and the scripted runtime, and 168 tests pass. The dsh 0.2.2-rc.1
 LLM service, session store, and compaction balance functions are loaded in that
 suite. The real dsh LLM runtime is mounted for file and image projection tests
 and for the native error finish test. The agent loop is not driven. No offline
@@ -17,8 +17,10 @@ O62 to O66 cover the context-capacity cache and the flat-text compaction summary
 import. Rows O67 to O69 cover session-disposal cleanup and the auth acceptance
 cache. Rows O70 and O71 cover the auxiliary session release. Rows O72 and O73
 cover the resolved model display name and the absent default effort. Rows O74 to
-O78 cover trailing user content inside a waiting tool turn. They are offline
-tests. No live model request measured the rollover, a provider error, a
+O78 cover trailing user content inside a waiting tool turn. Rows O79 to O81 cover the
+live-shaped tool-turn usage event fold, the MCP-qualified native tool name, and
+the split assistant message block indexes found in the issue #13 smoke run. They
+are offline tests. No live model request measured the rollover, a provider error, a
 configuration change, a live token meter, a live dsh compaction, or an image in
 a trailing mid-turn message, and the tests claim no signed-thinking retention
 across any rollover or import.
@@ -145,6 +147,9 @@ result delivery, opened session, close request, and remaining child handle.
 | O76 | Developer or system message after the tool-result batch | `UNSUPPORTED_INPUT` before any native send; the parked result is not released |
 | O77 | Image in a trailing mid-turn user message | `UNSUPPORTED_INPUT` before dispatch; no result release and no byte read |
 | O78 | Trailing user content with a configuration change or a restored generation | The recorded rollover imports the completed outcome and sends the trailing content as pending input; one dsh stream |
+| O79 | An assistant message with a tool block, usage, and `stop_reason: null`, then the result message | One usage event, then one synthetic `tool_use` stop; one dsh stream finishes `tool-calls`; the result usage is a fallback only when no assistant message had usage |
+| O80 | A native response tool name qualified as `mcp__dsh__dsh__<name>` | The published dsh tool name is `<name>`; the call id is preserved; the stream finishes `tool-calls` |
+| O81 | One API message split into several assistant messages with the same id (thinking, text, tool_use) | Block indexes continue across the split; one usage event; one tool stop; the stream finishes `tool-calls` with reasoning, text, and tool-call blocks |
 
 Use independent expected response data for thinking tests. A comparison that
 derives both expected and actual data from the altered request cannot detect a

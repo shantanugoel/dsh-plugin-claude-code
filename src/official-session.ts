@@ -3,7 +3,14 @@ import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import { pluginFailure } from './errors.js'
-import { eventsFromAssistant, eventsFromResult, readToolUseId } from './sdk-events.js'
+import {
+  advanceAssistantTurn,
+  eventsFromResult,
+  foldTurnEvents,
+  newNativeTurn,
+  readToolUseId,
+  type NativeTurnState,
+} from './sdk-events.js'
 import { zodShapeForTool } from './sdk-schema.js'
 import { DSH_MCP_SERVER, PINNED_SDK_VERSION } from './sdk-plan.js'
 import type {
@@ -183,8 +190,7 @@ async function consume(
   identity: { cliSessionId: string; cliVersion: string },
   requestedModel: string,
 ): Promise<void> {
-  let stopSent = false
-  let messageId = 'assistant'
+  let turn: NativeTurnState = newNativeTurn()
   let latestAssistantError: unknown
   for await (const message of query) {
     if (message.type === 'system' && message.subtype === 'init') {
@@ -194,42 +200,26 @@ async function consume(
       continue
     }
     if (message.type === 'assistant' && message.message !== undefined) {
-      if (stopSent) stopSent = false
+      // A completed assistant stop ends one native turn. The next assistant
+      // message starts a new turn with its own usage.
+      if (turn.stopSent) turn = { ...turn, stopSent: false, usageSent: false, blockCount: 0 }
       if (typeof message.error === 'string' && message.error.trim() !== '') latestAssistantError = message.error
-      let hasTool = false
-      for (const event of eventsFromAssistant(message.message)) {
-        if (event.type === 'message-stop') {
-          stopSent = true
-          messageId = event.messageId
-        }
-        if (event.type === 'block-snapshot') {
-          messageId = event.messageId
-          if (event.blockType === 'tool-call') hasTool = true
-        }
-        queue.push(event)
-      }
-      if (hasTool && !stopSent) {
-        queue.push({ type: 'message-stop', messageId, stopReason: 'tool_use' })
-        stopSent = true
-      }
+      const advanced = advanceAssistantTurn(turn, message.message)
+      for (const event of advanced.events) queue.push(event)
+      turn = advanced.state
       continue
     }
     if (message.type === 'result') {
-      const events = eventsFromResult(message, {
-        messageId,
-        stopSent,
+      const resultEvents = eventsFromResult(message, {
+        messageId: turn.messageId,
+        stopSent: turn.stopSent,
         ...(latestAssistantError === undefined ? {} : { latestAssistantError }),
       })
       latestAssistantError = undefined
-      let failed = false
-      for (const event of events) {
-        if (event.type === 'message-stop') {
-          stopSent = true
-          messageId = event.messageId
-        }
-        if (event.type === 'turn-error') failed = true
-        queue.push(event)
-      }
+      const folded = foldTurnEvents(turn, resultEvents)
+      const failed = folded.events.some((event) => event.type === 'turn-error')
+      for (const event of folded.events) queue.push(event)
+      turn = folded.state
       if (failed) {
         // The adapter fails the turn with the mapped code and closes this
         // generation. No later event belongs to it.

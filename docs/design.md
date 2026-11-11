@@ -76,6 +76,17 @@ With the opposite order, the trailing message became a second native turn. See
 [the trailing-context probe](evidence/trailing-context-probe-2026-11-11.json).
 This probe did not run the plugin inside dsh.
 
+A live isolated-dsh headless run on 2026-11-11 exposed three transport shapes
+that the native event fold must handle. The CLI can split one API message into
+several assistant messages with the same id and one content block each, so the
+block indexes continue across that split. It attaches usage to those streamed
+messages while the stop reason is null, so usage is emitted independent of the
+stop reason and folded to one event for each native turn. The MCP request extra
+names the tool-use id as `_meta['claudecode/toolUseId']`; the id reader accepts
+that spelling. With these shapes handled, one live tool turn completed through
+dsh: the model called the dsh tool, dsh executed it, the result returned, and the
+model replied. This is one tool turn, not a retention measurement.
+
 The request also includes `DeferredToolPlaceholder` and `advisor`, although the
 startup event lists only `mcp__dsh__probe`. Thus, the startup tool list alone is
 insufficient evidence of the native tool list. This measurement prevents release
@@ -525,6 +536,13 @@ the native stop `max_tokens` and then to the dsh finish
 it. A turn that hits the output-token limit and also carries a tool call is not
 safe: the plugin refuses the turn with `MALFORMED_RESPONSE` and does not execute
 the call. The answer text of a truncated turn can be incomplete.
+
+The SDK can attach usage to a streamed assistant message whose `stop_reason` is
+null. The adapter emits usage from that message when it is present, independent
+of the stop reason. It keeps at most one usage event for a native turn, because
+the dsh translation refuses a repeated usage. A tool-call block with no explicit
+stop adds the synthetic `tool_use` stop after the usage. The result message
+supplies usage when no assistant message had it.
 
 The evidence for this section is offline. It uses synthetic SDK result objects
 and the scripted native runtime. No live provider error was produced.

@@ -61,6 +61,20 @@ Status, 2026-11-11 (issue #12): no dsh release later than 0.2.2-rc.1 exists. The
 plugin keeps the exact `engines.dsh` pin (D26), the README agrees, and the
 plugin manager refuses an untested engine requirement with a clear message.
 
+Status, 2026-11-11 (issue #13 smoke): a live isolated-dsh tool turn failed with
+`MALFORMED_RESPONSE: The native response has no usage`. The streamed assistant
+message that carries a tool call can report usage with a null stop reason. The
+native event fold now emits that usage before the synthetic tool stop and keeps
+one usage per native turn (offline row O79). A native response tool name also carries
+an MCP qualifier, so the response mapping now accepts the qualified form
+(offline row O80). The CLI can also split one API message into several
+assistant messages with the same id, so the block indexes continue across that
+split (offline row O81). The live MCP request extra names the tool-use id as
+`_meta['claudecode/toolUseId']`, so the id reader accepts that spelling too. The
+offline suite has 168 tests. A live isolated-dsh headless tool turn now
+completes: the model called the dsh `write` tool, dsh executed it, the result
+returned to the native session, and the model replied DONE.
+
 Status, 2026-11-11 (issue #4): M5 adds trailing user content after a tool-result
 batch. The offline suite has 159 tests. The adapter delivers the trailing user
 messages inside the same native turn before it releases the tool results (D31).

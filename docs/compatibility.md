@@ -253,7 +253,7 @@ work, the suite had 117 tests. After the context-capacity and compaction-summary
 work the suite had 135 tests. The new tests use the scripted runtime. They do
 not start the Claude binary and they do not measure a context window. After the
 session-cleanup work the suite had 146 tests. After the auxiliary-release work
-the suite had 150 tests. After the model-metadata work the suite has 152 tests.
+the suite had 150 tests. After the model-metadata work the suite had 152 tests. After the issue #13 smoke fixes the suite has 168 tests.
 The packed file list has 63 files.
 The `npm pack --dry-run` check on 2026-11-11 used a temporary npm cache, because
 the default npm cache in this environment has root-owned entries and `npm pack`

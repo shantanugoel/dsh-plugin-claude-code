@@ -5,6 +5,7 @@ import { assertEvidenceFits, retentionProofAccepted } from './evidence.js'
 import { pluginFailure } from './errors.js'
 import { nativeFailureError } from './native-failure.js'
 import type { NativeEvent } from './sdk-runtime.js'
+import { DSH_MCP_SERVER } from './sdk-plan.js'
 
 /** Why the native generation ended, for the recorded generation change. */
 export type NativeFailureReason = 'timeout' | 'process-loss'
@@ -395,10 +396,19 @@ function publishTool(block: OpenBlock, input: TranslateInput): {
   }
 }
 
+/**
+ * Native response tool names carry the MCP server qualifier that the CLI adds
+ * (`mcp__dsh__<mapped name>`). The bridge map is keyed by the mapped name
+ * without that qualifier. Accept both forms so a real native response resolves
+ * to the exact dsh tool name.
+ */
 function publishedToolName(name: string, input: TranslateInput): string {
-  const mapped = input.nativeToDsh.get(name)
+  const qualifier = `mcp__${DSH_MCP_SERVER}__`
+  const bare = name.startsWith(qualifier) ? name.slice(qualifier.length) : name
+  const mapped = input.nativeToDsh.get(name) ?? input.nativeToDsh.get(bare)
   if (mapped !== undefined) return mapped
   if (input.dshNames.has(name)) return name
+  if (input.dshNames.has(bare)) return bare
   throw pluginFailure('NATIVE_CONTEXT_MISMATCH', 'The native response named a tool outside the dsh tool list.')
 }
 
