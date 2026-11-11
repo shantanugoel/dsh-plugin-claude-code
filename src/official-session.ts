@@ -235,7 +235,7 @@ async function consume(
         // stream ends. Publish the audit before the dsh stop event, so the dsh
         // finish stores the accepted or unavailable audit for this exact turn.
         await appendEvidence(queue, capture)
-        capture?.recordAssistantResponse(assistantNativeBlocks(advanced.events))
+        capture?.recordAssistantResponse(assistantNativeBlocks(advanced.events), typeof message.message.id === 'string' ? message.message.id : undefined)
       }
       for (const event of advanced.events) queue.push(event)
       turn = advanced.state

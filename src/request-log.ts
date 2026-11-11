@@ -122,6 +122,7 @@ export class RequestEvidenceCapture {
   private readonly toolCallIds: string[] = []
   private readonly toolResultIds: string[] = []
   private servedModel: string | undefined
+  private lastAssistantMessageId: string | undefined
   private consumedRequests = 0
   private unsupportedContent = false
   private failure: string | undefined
@@ -159,8 +160,18 @@ export class RequestEvidenceCapture {
     this.toolResultIds.push(result.callId)
   }
 
-  recordAssistantResponse(blocks: readonly unknown[]): void {
+  recordAssistantResponse(blocks: readonly unknown[], messageId?: string): void {
+    // The CLI can split one API assistant message into several streamed
+    // assistant messages with the same id and one block each. The recorded
+    // request keeps them as one message, so merge blocks with the same id.
+    const lastIndex = this.assistantResponses.length - 1
+    const last = this.assistantResponses[lastIndex]
+    if (messageId !== undefined && last !== undefined && this.lastAssistantMessageId === messageId) {
+      this.assistantResponses[lastIndex] = { blocks: [...last.blocks, ...blocks] }
+      return
+    }
     this.assistantResponses.push({ blocks })
+    this.lastAssistantMessageId = messageId
   }
 
   /**
@@ -438,9 +449,9 @@ export class RequestEvidenceCapture {
     for (const message of messages) {
       if (!isRecord(message)) return false
       const role = message['role']
+      if (role === 'system') continue
       const content = message['content']
       if (!Array.isArray(content)) return false
-      if (role === 'system') continue
       if (role === 'assistant') {
         recordedAssistant.push(content)
         continue
@@ -501,11 +512,23 @@ function normalizeToolSchema(value: unknown): unknown {
   return copy
 }
 
-/** Remove response-only fields that the CLI adds to a tool call block. */
+/**
+ * Remove request-only annotations that the CLI adds to an assistant block.
+ * `caller` appears only on a response tool-use block. `cache_control` is added
+ * to the last block of the replayed request and is not model-visible content.
+ */
 function normalizeAssistantBlock(block: unknown): unknown {
   if (!isRecord(block)) return block
-  if (block['type'] !== 'tool_use') return block
-  const { caller: _caller, ...rest } = block
+  const { caller: _caller, cache_control: _cacheControl, ...rest } = block
+  // The CLI display-redacts a replayed thinking text as "<REDACTED>" while it
+  // keeps the signature. Compare the block type and the signature, which is the
+  // retention proof, and do not compare the redacted display text.
+  if (rest['type'] === 'thinking') {
+    // The CLI display-redacts a replayed thinking text as "<REDACTED>" while it
+    // keeps the signature. Compare the block type and the signature, which is
+    // the retention proof; the thinking text is not compared.
+    return { type: 'thinking', signature: rest['signature'] ?? '' }
+  }
   return rest
 }
 
