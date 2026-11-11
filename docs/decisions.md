@@ -793,8 +793,14 @@ Checked and not changed:
   decrease the reservation. `headroomTokens` and `modelPolicies` are dsh
   profile settings. A larger reported context window would be a false value.
 - The pruner. The dsh presets mount `dsh-compaction-tool-result-pruner` with
-  character limits only. No setting for one provider was found in the preset.
-  The pruner package was not available for inspection.
+  the id `tool-result-pruner`. Its bundled README and its configuration schema
+  have three settings only: `thresholdChars` (default 8192), `headChars`
+  (default 4096), and `tailChars` (default 1024). An unknown setting stops the
+  plugin load. No setting applies to one provider or one model. The README
+  states that a replaced earlier result invalidates cache reuse from the first
+  changed token. The pruner runs only after a compaction trigger qualifies. A
+  profile patch entry with `disabled: true` for that id is a possible control
+  for all providers. This project did not test it.
 - `REPLAY_STATE_INVALID` for a changed last assistant publication. That rule
   is unchanged.
 - `recordContextImport` still returns `REBASE_REQUIRED` for an open tool
