@@ -222,6 +222,15 @@ model ID and do not permit an automatic fallback model. Obtain catalog entries
 from the official SDK where supported and verify the effective model. Catalog
 membership does not establish an account's current model entitlement.
 
+Use the discovered catalog display name as the resolved model name. Keep the
+exact requested id as the model id. An id with no catalog row uses the raw id as
+its name. Report only the effort levels that the catalog row reports. The SDK
+0.3.322 `ModelInfo` type has `supportsEffort` and `supportedEffortLevels`. It has
+no `defaultEffort` field, so the plugin does not report a default effort.
+Absence keeps the provider default. Do not project other discovered fields such
+as `resolvedModel` or the thinking, fast-mode, and auto-mode support flags until
+a dsh model field consumes them.
+
 Keep the prompt, native tool definitions, conversion rules, and model fixed for
 the generation. Record the CLI's own prompt prefix and reminders. The measurement
 shows that `--system-prompt` does not remove every CLI-added input.

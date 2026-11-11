@@ -28,6 +28,10 @@ Status, 2026-11-11: M12 releases the auxiliary session key on every exit. The
 offline suite has 150 tests after this change. No live auxiliary call was
 measured.
 
+Status, 2026-11-11: M13 uses the discovered catalog display name for the
+resolved model and reports no invented default effort. The offline suite has 152
+tests after this change. No live model discovery was measured.
+
 Status, 2026-11-11 (issue #1): the Git install distribution builds `dist/` at
 install time through the `prepare` script (D20). An isolated dsh profile
 installed the plugin from a local Git spec, and `--dump-config` listed the
@@ -394,3 +398,22 @@ measured.
 
 Completion: every aborted or failed auxiliary call leaves no session entry, and
 a later call with the same content starts a new native session.
+
+## M13. Model display name and measured default effort
+
+Status on 2026-11-11: offline work is complete. No live model discovery was
+measured.
+
+- [x] Use the discovered catalog `displayName` as `resolveModel().name`.
+- [x] Keep the exact requested id as the model id and the raw id for an
+  uncatalogued model.
+- [x] Do not invent `reasoning.defaultEffort`. The SDK 0.3.322 `ModelInfo`
+  type has no such field.
+- [x] Record the measurement fact in the design and the decision file.
+- [x] Add offline tests O72 and O73, including the real dsh LLM service.
+- [ ] Measure a live `supportedModels()` display name and effort report through
+  an installed dsh profile.
+
+Completion: the resolved model name matches the discovered catalog name, an
+uncatalogued id keeps its raw name, and no default effort appears without a
+measured value.

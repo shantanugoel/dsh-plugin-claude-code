@@ -26,7 +26,7 @@ import {
   type OutgoingBlock,
 } from './images.js'
 import { McpBridge, mapToolNames } from './mcp-bridge.js'
-import { projectCatalogModel } from './catalog.js'
+import { projectCatalogModel, resolvedModelName } from './catalog.js'
 import type { DiscoveredModel } from './model-discovery.js'
 import { recordContextImport as appendContextImport } from './rebase.js'
 import { parseReplay, type GenerationChangeReason, type ReplayV1 } from './replay.js'
@@ -142,7 +142,7 @@ export class ClaudeCodeAdapter extends LlmAdapter {
       return {
         provider,
         id: model,
-        name: model,
+        name: resolvedModelName(model, row),
         inputModalities: ['text', 'image'],
         context: { contextWindow: contextWindowFor(model) },
         ...(reasoning === undefined ? {} : { reasoning }),

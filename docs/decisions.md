@@ -543,3 +543,27 @@ auxiliary call leaves no entry. The next auxiliary call with the same purpose,
 output cap, and content starts a new native session. A live conversation keeps
 its entry and process, and the next conversation request continues the same
 native session. No live Claude process was measured.
+
+## D30. Use the catalog display name and invent no default effort
+
+Decision: `resolveModel` returns the discovered catalog `displayName` as `name`
+when the catalog has the row. It keeps the exact requested id as `id`. An
+uncatalogued id uses the raw id as its `name`. Report only the effort levels that
+the catalog row reports. Do not return `reasoning.defaultEffort`. Do not project
+other discovered fields until a dsh model field consumes them.
+
+Reason: the older code returned the raw model id as the name, so some dsh UI
+paths showed an id instead of the provider's display name. The SDK 0.3.322
+`ModelInfo` type declares `supportsEffort` and `supportedEffortLevels`. It has no
+`defaultEffort` field, and the CLI reports no default effort value. A
+`defaultEffort` would materialize an effort into every request that omits one.
+That changes the native request with no measurement. Absence keeps the
+provider's own default. The type also declares `resolvedModel`,
+`supportsAdaptiveThinking`, `supportsFastMode`, and `supportsAutoMode`. No dsh
+model field consumes them, so the adapter stays smaller and does not project
+them.
+
+Evidence: the installed SDK 0.3.322 declaration file `sdk.d.ts`, read on
+2026-11-11. Offline rows O72 and O73. The tests use synthetic catalog rows and
+the real dsh 0.2.2-rc.1 LLM service. No live `supportedModels()` read was made
+for this change.

@@ -61,6 +61,14 @@ generation with the new level and a recorded `configuration-change`. A closed or
 absent generation recovers with a new generation and one recorded textual
 import. An earlier-prefix edit returns `REBASE_REQUIRED`.
 
+`resolveModel` uses the catalog display name for `name` when the discovered row
+exists. It keeps the exact requested id for `id`. An uncatalogued id uses the raw
+id as its name. The SDK 0.3.322 `ModelInfo` declares `supportsEffort` and
+`supportedEffortLevels` and no `defaultEffort`. Do not return
+`reasoning.defaultEffort`: absence keeps the provider default. Do not project
+other discovered fields, such as `resolvedModel`, until a dsh model field uses
+them.
+
 Resolve every model with `inputModalities: ['text', 'image']`. The catalog entry
 uses the same value. An image-capable route receives ImageBlock values. A
 text-only route receives stable placeholder text from the runtime. Implement

@@ -25,6 +25,19 @@ export function projectCatalogModel(
   }
 }
 
+/**
+ * Display name for one resolved model.
+ * Use the discovered catalog name when that row exists. Otherwise keep the
+ * exact requested id. An empty catalog name also keeps the raw id.
+ */
+export function resolvedModelName(
+  id: string,
+  row: { readonly displayName: string } | undefined,
+): string {
+  if (row === undefined || row.displayName.trim() === '') return id
+  return row.displayName
+}
+
 /** Route entry. The catalog stays empty until model discovery supplies rows. */
 export function blockedRouteDescriptor(): LlmConfigurableProvider {
   return {

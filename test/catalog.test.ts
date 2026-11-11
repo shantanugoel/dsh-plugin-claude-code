@@ -54,7 +54,13 @@ test('an allowed test gate publishes the exact catalog id', async () => {
 test('loading the plugin advertises the discovered model ids', async () => {
   const original = officialModelDiscovery.list
   officialModelDiscovery.list = async () => [
-    { value: 'claude-sonnet-5', displayName: 'Sonnet', description: 'Main and subagent model.' },
+    {
+      value: 'claude-sonnet-5',
+      displayName: 'Sonnet',
+      description: 'Main and subagent model.',
+      supportsEffort: true,
+      supportedEffortLevels: ['low', 'medium', 'high'],
+    },
     { value: 'claude-sonnet-5', displayName: 'Duplicate', description: 'Ignored.' },
   ]
   try {
@@ -71,6 +77,14 @@ test('loading the plugin advertises the discovered model ids', async () => {
     assert.equal(models[0]?.name, 'Sonnet')
     const blocked = ctx.llm.listConfigurableProviders().find((entry) => entry.provider === 'claude-code-session')
     assert.equal(blocked?.error, undefined)
+    const resolvedModel = await ctx.llm.resolveModelInfo('claude-code-session', 'claude-sonnet-5')
+    assert.equal(resolvedModel.id, 'claude-sonnet-5')
+    assert.equal(resolvedModel.name, 'Sonnet')
+    assert.deepEqual(resolvedModel.reasoning?.efforts.map((effort) => effort.id), ['low', 'medium', 'high'])
+    assert.equal(Object.hasOwn(resolvedModel.reasoning ?? {}, 'defaultEffort'), false)
+    const uncataloguedModel = await ctx.llm.resolveModelInfo('claude-code-session', 'claude-not-in-catalog')
+    assert.equal(uncataloguedModel.name, 'claude-not-in-catalog')
+    assert.equal(uncataloguedModel.id, 'claude-not-in-catalog')
   } finally {
     officialModelDiscovery.list = original
   }
@@ -182,4 +196,48 @@ test('a prepared call refuses a configuration change before dispatch', async () 
     return true
   })
   assert.equal(runtime.starts.length, 0)
+})
+
+
+test('the resolved model uses the discovered catalog display name', async () => {
+  const runtime = new ScriptedNativeRuntime()
+  const { model } = makeAdapter({
+    runtime,
+    spendGate: new ProductionSpendGate(),
+    catalog: [
+      { value: 'claude-haiku-5-5', displayName: 'Haiku 5.5' },
+      { value: 'claude-blank-name', displayName: '   ' },
+    ],
+  })
+  const catalogued = await model.resolveModel('claude-code-session', 'claude-haiku-5-5')
+  assert.equal(catalogued.id, 'claude-haiku-5-5')
+  assert.equal(catalogued.name, 'Haiku 5.5')
+  // A row without a usable display name keeps the raw id.
+  const blank = await model.resolveModel('claude-code-session', 'claude-blank-name')
+  assert.equal(blank.name, 'claude-blank-name')
+})
+
+test('a catalog row reports no invented default effort and an uncatalogued id keeps its raw id', async () => {
+  const runtime = new ScriptedNativeRuntime()
+  const { model } = makeAdapter({
+    runtime,
+    spendGate: new ProductionSpendGate(),
+    catalog: [{
+      value: 'haiku',
+      displayName: 'Haiku 5.5',
+      supportsEffort: true,
+      supportedEffortLevels: ['low', 'medium', 'high'],
+    }],
+  })
+  const catalogued = await model.resolveModel('claude-code-session', 'haiku')
+  assert.equal(catalogued.name, 'Haiku 5.5')
+  assert.deepEqual(catalogued.reasoning?.efforts.map((effort) => effort.id), ['low', 'medium', 'high'])
+  // The SDK reports no default effort, so the adapter invents none.
+  assert.equal(Object.hasOwn(catalogued.reasoning ?? {}, 'defaultEffort'), false)
+  assert.equal(Object.hasOwn(catalogued, 'defaultMaxTokens'), false)
+
+  const uncatalogued = await model.resolveModel('claude-code-session', 'claude-unknown-id')
+  assert.equal(uncatalogued.id, 'claude-unknown-id')
+  assert.equal(uncatalogued.name, 'claude-unknown-id')
+  assert.equal(uncatalogued.reasoning, undefined)
 })

@@ -31,6 +31,11 @@ export function claudeEffort(value: string | undefined): ClaudeEffort | undefine
 /**
  * Selector metadata for one discovered model.
  * A model that does not report effort support has no selector.
+ *
+ * The SDK 0.3.322 `ModelInfo` type reports `supportsEffort` and
+ * `supportedEffortLevels`. It has no `defaultEffort` field. Do not invent one.
+ * A `defaultEffort` would materialize an effort into every request that omits
+ * one, and the CLI reports no such value. Absence keeps the provider default.
  */
 export function reasoningFor(model: {
   readonly supportsEffort?: boolean

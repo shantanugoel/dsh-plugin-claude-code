@@ -2,8 +2,8 @@
 
 Use three test layers. Keep the result of each layer separate.
 
-Offline status on 2026-11-11: the Node suite covers rows O01 through O71 with
-synthetic data and the scripted runtime, and 150 tests pass. The dsh 0.2.2-rc.1
+Offline status on 2026-11-11: the Node suite covers rows O01 through O73 with
+synthetic data and the scripted runtime, and 152 tests pass. The dsh 0.2.2-rc.1
 LLM service, session store, and compaction balance functions are loaded in that
 suite. The real dsh LLM runtime is mounted for file and image projection tests
 and for the native error finish test. The agent loop is not driven. No offline
@@ -15,8 +15,9 @@ O53 to O57 cover native turn-error mapping and truncated answers. Rows O58 to
 O61 cover a fixed-configuration change with the recorded-import mechanism. Rows
 O62 to O66 cover the context-capacity cache and the flat-text compaction summary
 import. Rows O67 to O69 cover session-disposal cleanup and the auth acceptance
-cache. Rows O70 and O71 cover the auxiliary session release. They are offline
-tests. No live model request measured the rollover, a
+cache. Rows O70 and O71 cover the auxiliary session release. Rows O72 and O73
+cover the resolved model display name and the absent default effort. They are
+offline tests. No live model request measured the rollover, a
 provider error, a configuration change, a live token meter, a live dsh
 compaction, a session disposal, or a live auth command, and the tests claim no
 signed-thinking retention across any rollover or import.
@@ -136,6 +137,8 @@ result delivery, opened session, close request, and remaining child handle.
 | O69 | Two accepted auth checks in one scope, a refusal, and a changed scope or interval | One auth command for the accepted pair; a changed settings file state, home, workspace, executable, environment, binding, or interval runs it again; a refusal is not cached |
 | O70 | An aborted auxiliary call | No session entry remains and the native process is closed; a later auxiliary call with the same content starts a new native session |
 | O71 | An aborted auxiliary call while a conversation generation is live | The conversation entry and process stay live and the next conversation request continues the same native session; an auxiliary release of a conversation key removes nothing |
+| O72 | A model id in the discovered catalog | `resolveModel` name equals the catalog display name; the id stays exact; the effort levels are only the reported ones; `reasoning` has no `defaultEffort` |
+| O73 | A model id with no catalog row | `resolveModel` name equals the raw id and the reasoning block is absent; the real dsh LLM service accepts the result |
 
 Use independent expected response data for thinking tests. A comparison that
 derives both expected and actual data from the altered request cannot detect a
