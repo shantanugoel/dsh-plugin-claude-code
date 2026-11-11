@@ -36,8 +36,10 @@ Planned source files:
 | `test/` | Node test-runner tests and scripted SDK transport |
 | `scripts/` | Packaging checks and explicit live-test entry points |
 
-Use `dist/` for build output. Do not commit it. A packed archive carries the
-compiled files. The git tree does not. Do not add a `prepare` script.
+Use `dist/` for build output. Do not commit it. The `prepare` script
+(`npm run build`) builds it when a package manager installs the repository as a
+Git dependency and before `npm pack`. A packed archive carries the compiled
+files. The Git tree does not.
 
 ## dsh adapter
 

@@ -39,6 +39,7 @@
     "check": "tsc -p tsconfig.json --noEmit && node scripts/verify-sdk-surface.mjs",
     "test": "tsc -p tsconfig.test.json && node --test --test-reporter=spec dist-test/test/*.test.js && node scripts/verify-sdk-surface.mjs && python3 scripts/verify_thinking.py tests/fixtures/thinking-roundtrip/session.jsonl tests/fixtures/thinking-roundtrip/output.ndjson --self-test",
     "build": "tsc -p tsconfig.build.json",
+    "prepare": "npm run build",
     "pack:check": "npm run build && node scripts/pack-check.mjs",
     "test:live": "node scripts/live-test.mjs"
   },

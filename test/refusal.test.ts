@@ -197,6 +197,8 @@ test('compiled production files do not import the Agent SDK', () => {
 
 test('package scripts keep live tests separate', () => {
   const manifest = JSON.parse(readFileSync(fileURLToPath(new URL('../../package.json', import.meta.url)), 'utf8')) as {
+    main: string
+    files: string[]
     scripts: Record<string, string>
     peerDependencies: Record<string, string>
     dsh: { bundle: { patch: string; listedByDefault: boolean } }
@@ -205,8 +207,11 @@ test('package scripts keep live tests separate', () => {
   assert.equal(manifest.scripts['build']?.includes('test:live'), false)
   assert.equal(manifest.scripts['check']?.includes('test:live'), false)
   assert.equal(manifest.scripts['postinstall'], undefined)
-  assert.equal(manifest.scripts['prepare'], undefined)
+  assert.equal(manifest.scripts['prepare'], 'npm run build')
+  assert.equal(manifest.scripts['prepare']?.includes('test:live'), false)
   assert.equal(manifest.scripts['prepack'], undefined)
+  assert.equal(manifest.main, './dist/index.js')
+  assert.ok(manifest.files.some((file) => file.startsWith('dist/')))
   assert.equal(manifest.peerDependencies['@deepseek-ai/dsh-llm'], '0.2.2-rc.1')
   assert.equal(manifest.dsh.bundle.patch, './cordis.patch.yml')
   assert.equal(manifest.dsh.bundle.listedByDefault, false)

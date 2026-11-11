@@ -15,6 +15,12 @@ has 76 tests. A direct official-SDK probe read a synthetic image through a user
 message and through an MCP tool result. The plugin did not run inside a dsh
 profile for this change.
 
+Status, 2026-11-11 (issue #1): the Git install distribution builds `dist/` at
+install time through the `prepare` script (D20). An isolated dsh profile
+installed the plugin from a local Git spec, and `--dump-config` listed the
+`claude-code-session` entry. The documented GitHub spec check is pending the
+push.
+
 ## Fixed requirements
 
 - Minimum target: dsh 0.2.2-rc.1. Check each advertised later version.
@@ -157,6 +163,11 @@ model change, tool change, plugin unload, export/restore, and missing replay sta
   Confirm that installing a plugin alone neither selects it nor spends quota.
   An in-memory load on the published LLM and session services passes. A dsh
   profile install was not run.
+- [ ] Make the Git-dependency distribution build the package at install time.
+  `prepare` runs `npm run build`; the Git tree stays without `dist/`. Tested on
+  2026-11-11 with an npm Git dependency install, a packed archive, and an
+  isolated dsh profile install from a local Git spec. The documented GitHub spec
+  check is pending the push.
 - [ ] Check the packed file list. Include compiled code, bundle patch, README,
   and the selected license. Exclude credentials, private logs, tests with real
   data, caches, and development artifacts. `pack:check` passed on 2026-11-10.
@@ -200,7 +211,9 @@ small test. If the user changes that requirement, record the new scope first.
   Record versions, test commands, failures, and unverified claims.
 - [ ] Choose the release license, version, supported runtime range, and built
   distribution method. Publish or install into a personal profile only within
-  the user's authorized deployment scope.
+  the user's authorized deployment scope. Distribution method, 2026-11-11: a Git
+  dependency with an install-time `prepare` build (D20). The license, version,
+  and runtime range stay open.
 
 Completion: all required release tests pass and the spend requirement is met.
 If it remains unmet, deliver the offline-tested plugin with inference disabled

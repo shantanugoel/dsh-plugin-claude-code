@@ -148,6 +148,9 @@ Reason: the user installed `github:shantanugoel/dsh-plugin-claude-code` and
 asked to remove the compiled tree. The desktop lock resolved commit `3a48335`,
 which contained `dist/`. Later commits leave that directory out of git.
 
+Status: replaced by D20 on 2026-11-11. The Git tree still does not contain
+`dist/`. D20 changes when the build runs.
+
 ## D12. Ignore folded tool history
 
 Decision: do not refuse `GenerateOptions.toolHistory`. Do not declare
@@ -256,3 +259,30 @@ Reason: the dsh LLM runtime owns file projection for every route. A second
 projection in the adapter would duplicate the code and could disagree with the
 runtime. The model reads the saved file with the dsh file tools. This makes
 file attachments work without a new content mapping.
+
+## D20. Build the package when it installs from Git
+
+Decision: add the script `"prepare": "npm run build"` to `package.json`. Keep
+`dist/` out of the Git tree. A Git install runs the build. A packed archive
+contains `dist/`. This decision replaces D11.
+
+Reason: `package.json` names `./dist/index.js` as `main`, and the Git tree does
+not contain `dist/`. A fresh install from
+`github:shantanugoel/dsh-plugin-claude-code` could not import the plugin. A
+package manager runs the `prepare` script for a Git dependency. The desktop app
+and the CLI thus get a built package without a manual build step.
+
+pnpm 11 blocks the build script of a Git dependency until the profile allows
+it. The CLI prints the exact `allowBuilds` key and the profile file to change.
+The desktop app records the pending build and asks the user to approve it. The
+build needs Node.js and npm on `PATH`, because pnpm runs `npm install` in the
+fetched copy to run the `prepare` script.
+
+Evidence: [install-2026-11-11.json](evidence/install-2026-11-11.json). On
+2026-11-11, an npm Git dependency install ran the build and created
+`dist/index.js`. The package entry imported. A packed archive contained 55
+files, including `dist/`, and no private files. An isolated dsh profile refused
+the first install with `ERR_PNPM_GIT_DEP_PREPARE_NOT_ALLOWED` and the exact
+`allowBuilds` key. The second run built and installed the plugin, and
+`--dump-config` listed the `claude-code-session` entry. The documented `github:`
+spec check is pending the push of this change.

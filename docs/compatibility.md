@@ -154,12 +154,45 @@ A native request record is an audit success only when `status` is `complete`,
 array that fits the storage bound. The scripted runtime supplies that record.
 This is not a live diagnostic capture.
 
+## Distribution and installation
+
+Distribution method: a Git dependency. The package manager builds `dist/` at
+install time through the `prepare` script (D20). The Git tree does not contain
+`dist/`. The packed archive does.
+
+Install checks on 2026-11-11 used macOS arm64, Node.js `v26.13.0`, npm
+`11.20.0`, the dsh 0.2.2-rc.1 CLI, and the bundled pnpm `11.28.5`:
+
+- `npm install git+file://<worktree>#issue-1-install` in an empty temporary
+  directory ran `prepare`, created `dist/index.js`, and installed 125 packages.
+  `import('dsh-plugin-claude-code')` resolved the package entry.
+- `npm pack` produced a 55-file archive. The archive contained `dist/`,
+  `cordis.patch.yml`, `README.md`, and `package.json`. It contained no source,
+  test, evidence, credential, or private file.
+- An isolated `DSH_HOME` profile (`acceptance`) initialized from the default
+  bundle list. The first `dsh plugin --profile acceptance add <git spec>`
+  failed with `ERR_PNPM_GIT_DEP_PREPARE_NOT_ALLOWED` and printed the exact
+  `allowBuilds` key. The failed run left the profile `package.json` without the
+  dependency.
+- After the profile `pnpm-workspace.yaml` contained that key, the same command
+  ran the build and installed the plugin. The profile `package.json` added the
+  dependency and the bundle.
+- `dsh --profile acceptance --dump-config` printed the
+  `dsh-plugin-claude-code` layer and the `claude-code-session` entry. The entry
+  is not disabled.
+
+The documented `github:shantanugoel/dsh-plugin-claude-code` install check is
+pending the push of the issue #1 change. These checks sent no model prompt. They
+did not use the user's desktop profile. The desktop app build-approval flow was
+not run.
+
 ## Commands
 
 The engine range is Node.js `>=24.9.0`. The checks below ran on Node.js
 `v26.13.0` and npm `11.20.0`. This run does not certify Node.js 24.9.0.
 
-Passed on 2026-11-10 and again on 2026-11-11 after the image work:
+Passed on 2026-11-10 and again on 2026-11-11 after the image work. These checks
+ran before D20 added the `prepare` script:
 
 - `npm ci` in a clean directory that contained only `package.json` and `package-lock.json`
 - `npm test`
@@ -170,15 +203,18 @@ Passed on 2026-11-10 and again on 2026-11-11 after the image work:
 The same `npm test`, `npm run check`, `npm run build`, and `npm run pack:check`
 commands passed again after the transcript, session-import, and catalog work.
 After the image work the suite has 76 tests and `pack:check` accepted 55 files.
-The package version is 0.2.0. No license is selected. The suite does not read
-Claude credentials and does not contact a model. `supportedModels()` is not
+The suite passed again on 2026-11-11 after the distribution change, with 76
+tests. The package version is 0.2.0. No license is selected. The suite does not
+read Claude credentials and does not contact a model. `supportedModels()` is not
 called. A supplied catalog row uses its exact id. `prepareCall` keeps one
 configuration generation for the later stream. Production supplies no catalog.
 
 `npm run test:live` exits with code 2. It starts no Claude process. `test`,
 `check`, `build`, and `pack:check` do not call it. The package has no
-`postinstall`, `prepare`, or `prepack` script. The git tree does not include
-`dist/`.
+`postinstall` or `prepack` script. The `prepare` script runs `npm run build` at
+install time and before `npm pack` (D20). The Git tree does not include `dist/`.
+`npm ci` also runs `prepare`, so it needs the source tree. A dependency-only
+install uses `npm ci --ignore-scripts`.
 
 The package inspection accepted the compiled files, `cordis.patch.yml`, the
 README, and `package.json`. No license is selected. The packed file list does

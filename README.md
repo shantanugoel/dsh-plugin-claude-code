@@ -11,26 +11,52 @@ approvals.
 - DeepSeek Harness 0.2.2-rc.1. Later versions are untested but may work.
 - The official Claude Code CLI on `PATH`, signed in with a claude.ai
   subscription.
+- For an install from GitHub: Node.js 24.9 or later, and npm on `PATH`. The
+  package builds during installation.
 
 The plugin accepts only a first-party Claude subscription login. It refuses an
 API key, a Claude Console login, and a custom billing endpoint.
 
 ## Install
 
-In Desktop app, you can install it with `github:shantanugoel/dsh-plugin-claude-code` as the plugin url.
+The repository does not contain `dist/`. The `prepare` script builds it from the
+locked dependencies when a package manager installs the repository as a Git
+dependency. Do not add a separate build step for a GitHub install.
 
-On CLI, you can install it with `dsh plugin --profile web add github:shantanugoel/dsh-plugin-claude-code` (Replace `web` with another profile name for other profiles)
+In the Desktop app, enter `github:shantanugoel/dsh-plugin-claude-code` as the
+plugin URL. The app builds the package during installation. If the app asks to
+allow the build scripts, approve them and retry the installation.
 
-For modifying/installing from a local copy, you can do the below.
+On the CLI, run:
+
+```sh
+dsh plugin --profile web add github:shantanugoel/dsh-plugin-claude-code
+```
+
+Replace `web` with another profile name for other profiles. pnpm blocks the
+build script of a Git package until the profile allows it. The first run fails
+with `ERR_PNPM_GIT_DEP_PREPARE_NOT_ALLOWED` and prints the exact `allowBuilds`
+key. Add that key to `$DSH_HOME/profiles/<profile>/pnpm-workspace.yaml`. The
+default `DSH_HOME` is `~/.dsh`. Example:
+
+```yaml
+allowBuilds:
+  "<key from the command>": true
+```
+
+Run the same command again. The second run builds `dist/` and installs the
+plugin. The desktop app records the same build approval and offers to retry.
+
+For a local copy, run:
 
 ```sh
 git clone https://github.com/shantanugoel/dsh-plugin-claude-code.git
 cd dsh-plugin-claude-code
 npm ci
-npm run build
 ```
 
-From that directory, run `dsh plugin add "$PWD"`. In the desktop app, use
+`npm ci` installs the locked dependencies and runs the `prepare` build. From
+that directory, run `dsh plugin add "$PWD"`. In the desktop app, use
 **Settings → Plugins → Add plugin** and enter the absolute path. Restart dsh
 when it asks, and enable the plugin in **Settings → Plugins** if it is not
 already on. Installation does not select a model or send a prompt.

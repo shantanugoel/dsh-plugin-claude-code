@@ -31,6 +31,17 @@ both cases. The probe made two inference requests. It used a private temporary
 directory for the fixture and committed no account data. It did not run the
 plugin inside dsh and did not measure signed thinking retention.
 
+## Install distribution check
+
+[install-2026-11-11.json](install-2026-11-11.json) records the issue #1 checks on
+2026-11-11. The Git tree does not contain `dist/`, so the package has a
+`prepare` script that builds it at install time. The record covers an npm Git
+dependency install, a packed archive, and an install into an isolated dsh
+profile. The first profile install failed with the build-approval error. After
+the profile allowed the exact key, the plugin installed and `--dump-config`
+listed the route. The documented GitHub spec check was pending the push at the
+time of the record. The record contains no account data and no raw capture.
+
 ## Limits
 
 - This was a direct `claude -p` probe, not the planned SDK plugin.

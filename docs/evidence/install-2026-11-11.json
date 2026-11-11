@@ -1,0 +1,72 @@
+{
+  "measurement_date": "2026-11-11",
+  "issue": 1,
+  "decision": "D20",
+  "distribution": {
+    "method": "Git dependency with an install-time prepare build",
+    "dist_in_git": false,
+    "prepare_script": "npm run build",
+    "packed_files": 55,
+    "packed_dist_files": 52
+  },
+  "versions": {
+    "package": "dsh-plugin-claude-code 0.2.0",
+    "dsh_cli": "0.2.2-rc.1",
+    "node": "v26.13.0",
+    "npm": "11.20.0",
+    "pnpm_bundled_with_dsh": "11.28.5",
+    "platform": "macOS arm64",
+    "git_spec": "git+file://<worktree>#issue-1-install"
+  },
+  "checks": [
+    {
+      "id": "I01",
+      "method": "npm install of the Git dependency in an empty temporary directory",
+      "result": "pass",
+      "details": "The prepare script ran npm run build. node_modules/dsh-plugin-claude-code/dist/index.js existed. The package entry imported with the exports CLAUDE_CODE_SESSION_ROUTE, Config, apply, inject, and name. npm installed 125 packages."
+    },
+    {
+      "id": "I02",
+      "method": "npm pack and npm pack --dry-run --json, then inspect the archive",
+      "result": "pass",
+      "details": "The archive had 55 entries: 52 files under dist/, package.json, README.md, and cordis.patch.yml. It had no source, test, fixture, evidence, credential, or private data file."
+    },
+    {
+      "id": "I03",
+      "method": "DSH_HOME=<temporary> dsh plugin --profile acceptance add <Git spec> on a new profile",
+      "result": "pass (expected refusal)",
+      "details": "The command exited 1 with ERR_PNPM_GIT_DEP_PREPARE_NOT_ALLOWED. It printed the exact allowBuilds key for the fetched commit and named the profile pnpm-workspace.yaml. The failed run left the profile package.json without the dependency."
+    },
+    {
+      "id": "I04",
+      "method": "Add the printed allowBuilds key to the profile pnpm-workspace.yaml and repeat the add",
+      "result": "pass",
+      "details": "The run built the package in the fetched copy with npm (tsc -p tsconfig.build.json). It installed the plugin and added the dependency and the bundle to the profile package.json."
+    },
+    {
+      "id": "I05",
+      "method": "DSH_HOME=<temporary> dsh --profile acceptance --dump-config",
+      "result": "pass",
+      "details": "The composed tree has a dsh-plugin-claude-code layer and the claude-code-session entry. The entry is not disabled."
+    }
+  ],
+  "github_spec_check": {
+    "status": "pending",
+    "reason": "The issue #1 commit was not pushed at the time of these checks."
+  },
+  "no_model_prompt_sent": true,
+  "desktop_profile_used": false,
+  "desktop_app_approval_flow_tested": false,
+  "raw_capture_committed": false,
+  "proven": [
+    "A Git dependency install of the package runs the prepare build and produces an importable bundle.",
+    "The packed archive contains the compiled files and no private file.",
+    "An isolated dsh profile refuses the first Git install with a clear build-approval message and the exact key.",
+    "After the profile allows that key, the plugin installs and the composed profile lists the route."
+  ],
+  "not_proven": [
+    "The documented github:shantanugoel/dsh-plugin-claude-code spec; the push is pending.",
+    "The desktop app build-approval flow; it was not run.",
+    "A live model turn through the installed plugin; this issue sends no model prompt."
+  ]
+}

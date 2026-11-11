@@ -7,7 +7,7 @@ synthetic data and the scripted runtime, and 76 tests pass. The dsh 0.2.2-rc.1
 LLM service, session store, and compaction balance functions are loaded in that
 suite. The real dsh LLM runtime is mounted for file and image projection tests.
 The agent loop is not driven. No offline command starts the installed Claude
-binary.
+binary. The distribution checks I01 to I05 also passed on 2026-11-11.
 
 A separate live probe on 2026-11-11 used the official SDK 0.3.322 and Claude
 Code 2.1.319. It read one synthetic image from a user message and one synthetic
@@ -100,6 +100,25 @@ Use independent expected response data for thinking tests. A comparison that
 derives both expected and actual data from the altered request cannot detect a
 drop. Keep the successful answer in the tampered fixture to prove that answer
 success does not determine retention success.
+
+## Installation distribution checks
+
+The Git tree does not contain `dist/`. The `prepare` script builds it when a
+package manager installs the repository as a Git dependency. D20 records the
+decision.
+
+| ID | Setup or change | Required result |
+| --- | --- | --- |
+| I01 | `npm install` of the repository as a Git dependency in an empty temporary directory | `prepare` runs `npm run build`; `dist/index.js` exists; the package entry imports |
+| I02 | `npm pack` of the repository | The archive contains `dist/`, `cordis.patch.yml`, `README.md`, and `package.json`; it contains no source, test, evidence, credential, or private file |
+| I03 | Isolated dsh profile, first `dsh plugin add <git spec>` | The command fails with `ERR_PNPM_GIT_DEP_PREPARE_NOT_ALLOWED` and the exact `allowBuilds` key; the profile package.json does not add the dependency |
+| I04 | Add the printed `allowBuilds` key to the profile and repeat the add | The build runs, the plugin installs, and the profile lists the bundle |
+| I05 | `dsh --profile <isolated> --dump-config` | The composed tree contains the `dsh-plugin-claude-code` layer and the enabled `claude-code-session` entry |
+| I06 | Clean `dsh plugin --profile <isolated> add github:shantanugoel/dsh-plugin-claude-code` after the push | The result is the same as I03 to I05 with the documented GitHub spec |
+
+I01 to I05 passed on 2026-11-11. I06 is pending the push. The reviewed summary
+is [install-2026-11-11.json](evidence/install-2026-11-11.json). These checks
+sent no model prompt and did not use the user's desktop profile.
 
 ## dsh integration tests
 
