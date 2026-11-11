@@ -215,7 +215,7 @@ commands passed again after the transcript, session-import, and catalog work.
 After the image work the suite had 76 tests and `pack:check` accepted 55
 files. The suite passed again on 2026-11-11 after the distribution change,
 with 76 tests. After the native-error work, which was merged after the rollover work, the
-suite has 117 tests and the packed file list has 57 files. The `npm pack --dry-run` check on 2026-11-11
+suite has 117 tests and the packed file list has 59 files. The `npm pack --dry-run` check on 2026-11-11
 used a temporary npm cache, because the default npm cache in this environment
 has root-owned entries and `npm pack` cannot write to it. The package version
 is 0.2.0. No license is selected. The suite does not read Claude credentials
