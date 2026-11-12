@@ -8,7 +8,7 @@ const SAFE_INTEGER = Number.MAX_SAFE_INTEGER
 /**
  * Convert one JSON object schema into a Zod object shape.
  * Declared fields, enums, and bounds must survive. Zod writes an open object
- * as an empty schema and an unbounded integer as the safe integer range.
+ * as an empty schema and each missing integer bound as a safe integer limit.
  */
 export function zodShapeForTool(parameters: Record<string, unknown>): z.ZodRawShape {
   let parsed: z.ZodType
@@ -35,9 +35,10 @@ function normalizeSchema(value: unknown): unknown {
     if (key === '$schema') continue
     copy[key] = normalizeSchema(child)
   }
-  if (copy['type'] === 'integer' && copy['minimum'] === -SAFE_INTEGER && copy['maximum'] === SAFE_INTEGER) {
-    delete copy['minimum']
-    delete copy['maximum']
+  if (copy['type'] === 'integer') {
+    // Zod adds each safe-integer bound alone, so one declared bound must not hide the other.
+    if (copy['minimum'] === -SAFE_INTEGER) delete copy['minimum']
+    if (copy['maximum'] === SAFE_INTEGER) delete copy['maximum']
   }
   if (copy['type'] === 'object') {
     const properties = copy['properties']

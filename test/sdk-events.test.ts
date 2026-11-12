@@ -91,6 +91,18 @@ test('a preserved tool schema survives the Zod conversion', () => {
   })
   assert.equal(typeof harnessShape['code'], 'object')
   assert.equal(typeof harnessShape['args'], 'object')
+  // Live schema from the codex-computer-use MCP server: one declared integer bound.
+  const boundedShape = zodShapeForTool({
+    type: 'object',
+    properties: {
+      timeout_ms: { type: 'integer', minimum: 1, description: 'Optional timeout.' },
+      cap: { type: 'integer', maximum: 10 },
+      title: { type: 'string', minLength: 1, maxLength: 80 },
+    },
+    additionalProperties: false,
+  })
+  assert.equal(typeof boundedShape['timeout_ms'], 'object')
+  assert.equal(typeof boundedShape['cap'], 'object')
   assert.throws(() => zodShapeForTool({ type: 'string' }), (error: unknown) => {
     assert.ok(error instanceof LlmError)
     assert.equal(error.code, 'UNSUPPORTED_INPUT')
