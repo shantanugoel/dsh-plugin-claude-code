@@ -117,6 +117,19 @@ official `OTEL_LOG_RAW_API_BODIES` file diagnostic instead. The probe did not
 run the plugin inside dsh, and it did not measure an image, several trailing
 messages, signed-thinking retention, or another version pair.
 
+## Trailing-image probe
+
+[trailing-image-probe-2026-11-12.json](trailing-image-probe-2026-11-12.json)
+summarizes a direct Agent SDK probe on 2026-11-12. It used SDK 0.3.322, Claude
+Code 2.1.322, the subscription login, and `haiku`. The trailing-context probe
+queued one trailing user message with a text block and a synthetic PNG with the
+word `QUOKKA58`, then released the tool result. The model answered once with the
+tool token and the word. The raw request had the `tool_result`, a CLI-generated
+reminder text, and the image as three blocks of one user message. The image was
+not inside the tool result. The probe did not run the plugin inside dsh and did
+not measure another model or signed-thinking retention. The raw capture is
+private and is not committed.
+
 ## Request-evidence profile check
 
 [request-evidence-dsh-2026-11-11.json](request-evidence-dsh-2026-11-11.json)

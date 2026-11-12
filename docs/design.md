@@ -99,7 +99,10 @@ the CLI sent it in the same native request as a CLI-generated system-role
 mid-turn context message after the `tool_result`, and the model answered once.
 With the opposite order, the trailing message became a second native turn. See
 [the trailing-context probe](evidence/trailing-context-probe-2026-11-11.json).
-This probe did not run the plugin inside dsh.
+This probe did not run the plugin inside dsh. On 2026-11-12 a fourth probe with
+Claude Code 2.1.322 sent a trailing image in the same order. The model read it,
+and the CLI put the image after the `tool_result` block in the same user message
+(D40). See [the trailing-image probe](evidence/trailing-image-probe-2026-11-12.json).
 
 A live isolated-dsh headless run on 2026-11-11 exposed three transport shapes
 that the native event fold must handle. The CLI can split one API message into
@@ -261,8 +264,10 @@ on the native input queue before step 5 releases the results. The measured CLI
 puts them in the same native request, after the `tool_result`, as a
 CLI-generated system-role mid-turn message. This keeps one dsh stream and the
 same native session. A developer or system message at that boundary is refused.
-A non-offloaded image is refused until a measurement covers it. The committed
-dsh transcript keeps every trailing message.
+A trailing image keeps its own block in the same mid-turn input, and it counts
+toward the retained generation image total (D40). The measured CLI 2.1.322 puts
+it after the `tool_result` block in the same request. The committed dsh
+transcript keeps every trailing message.
 
 Stage results by native tool-use ID, independently of MCP callback arrival order.
 This avoids a deadlock if the CLI invokes handlers one at a time. Release the
@@ -683,8 +688,8 @@ conservative adapter constants, not a provider boundary.
 It does not establish that fresh-process replay or a relay can never work.
 Those paths are outside this design. The existing measurements support one
 
-It does not establish a measured image path for a trailing mid-turn message, and
-it does not claim signed-thinking retention across such a message. It does not
+The trailing-image path is measured only through a direct SDK probe (D40), and
+this design does not claim signed-thinking retention across such a message. It does not
 establish that fresh-process replay or a relay can never work. Those paths are
 outside this design. The existing measurements support one
 persistent CLI tool turn, an offline preservation check, and two synthetic

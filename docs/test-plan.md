@@ -17,7 +17,8 @@ O62 to O66 cover the context-capacity cache and the flat-text compaction summary
 import. Rows O67 to O69 cover session-disposal cleanup and the auth acceptance
 cache. Rows O70 and O71 cover the auxiliary session release. Rows O72 and O73
 cover the resolved model display name and the absent default effort. Rows O74 to
-O78 cover trailing user content inside a waiting tool turn. Rows O79 to O81 cover
+O78 cover trailing user content inside a waiting tool turn. Rows O114 and
+O115 add trailing images (D40). Rows O79 to O81 cover
 the live-shaped tool-turn transport shapes. Rows O82 to O88 cover the request
 image budget, the offload retry, and the retained-image generation threshold.
 Row O89 to O95 cover the request-evidence capture. Row O96 covers the live
@@ -150,7 +151,7 @@ result delivery, opened session, close request, and remaining child handle.
 | O74 | Tool-result batch followed by one user reminder | One native turn and one dsh stream; the reminder is queued before the result release; same native session; the next request continues it |
 | O75 | Two trailing user messages after a tool-result batch | Both messages keep their order and reach the same native turn; nothing moves into the tool result |
 | O76 | Developer or system message after the tool-result batch | `UNSUPPORTED_INPUT` before any native send; the parked result is not released |
-| O77 | Image in a trailing mid-turn user message | `UNSUPPORTED_INPUT` before dispatch; no result release and no byte read |
+| O77 | Image in a trailing mid-turn user message (D40) | One native turn; the mid-turn input holds the text and one image block; one attachment read; the tool result has no image; the input is queued before the result release |
 | O78 | Trailing user content with a configuration change or a restored generation | The recorded rollover imports the completed outcome and sends the trailing content as pending input; one dsh stream |
 | O79 | An assistant message with a tool block, usage, and `stop_reason: null`, then the result message | One usage event, then one synthetic `tool_use` stop; one dsh stream finishes `tool-calls`; the result usage is a fallback only when no assistant message had usage |
 | O80 | A native response tool name qualified as `mcp__dsh__dsh__<name>` | The published dsh tool name is `<name>`; the call id is preserved; the stream finishes `tool-calls` |
@@ -188,6 +189,8 @@ result delivery, opened session, close request, and remaining child handle.
 | O111 | Unknown tool call with an `end_turn` stop | `MALFORMED_RESPONSE`; the message has the sanitized name and no arguments |
 | O112 | Unknown name with control characters, a long name, more than 8 names, and a sanitized name equal to a dsh tool name | `?` replaces each control character; 64 characters at most; 8 names at most; the collision returns `NATIVE_CONTEXT_MISMATCH` |
 | O113 | Replay data with `unknownToolNames`; bridge turns with no handled call | The valid list survives a round trip and an invalid list returns `REPLAY_STATE_INVALID`; a stale handler is refused by the next handled turn; a turn with one handled call refuses a handler outside its ids |
+| O114 | Offloaded image in a trailing mid-turn user message | The mid-turn input holds the text and the placeholder text; no image block and no attachment read |
+| O115 | Trailing mid-turn images that put the live generation above the retained image threshold | One recorded `image-budget` generation; no mid-turn input; one new native start |
 
 Rows O106 to O113 are in `test/unknown-tool.test.ts` and
 `test/mcp-bridge.test.ts`. The live measurement is decision D38 and
@@ -318,6 +321,13 @@ did not run the plugin in dsh, did not measure an image, and did not measure
 signed-thinking retention. It also could not read the CLI session transcript
 because this session denied the transcript write; it used the official
 `OTEL_LOG_RAW_API_BODIES` file diagnostic instead.
+
+On 2026-11-12 the same probe ran with a trailing image (D40). It used SDK
+0.3.322, Claude Code 2.1.322, and `haiku`. The model read the word in a
+synthetic PNG in one native turn. The raw request had the image after the
+`tool_result` block in the same user message, not inside it. See
+[the trailing-image probe](evidence/trailing-image-probe-2026-11-12.json). The
+probe did not run the plugin in dsh or measure signed-thinking retention.
 
 ## Live retention test
 

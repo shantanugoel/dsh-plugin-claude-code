@@ -576,7 +576,8 @@ message on the native streaming input queue, then release the result batch.
 Continue the same dsh stream and the same native session. The committed dsh
 transcript keeps the complete frozen request. Refuse a developer message or a
 system message at that boundary. Refuse a non-offloaded image in a trailing
-mid-turn message until a measurement covers it.
+mid-turn message until a measurement covers it. (D40 replaces this image
+refusal.)
 
 Reason: the live measurement on 2026-11-11 used official Agent SDK 0.3.322,
 Claude Code 2.1.319, and the first-party subscription login. One in-process MCP
@@ -998,3 +999,46 @@ an explicit route on `subagent_fork` were not run.
 
 Evidence: [subagent-model-selection-2026-11-11.json](evidence/subagent-model-selection-2026-11-11.json)
 and live rows L08 and L09.
+
+## D40. Deliver an image in a trailing mid-turn user message
+
+Problem: in a dsh session with the `ptc` preset, `run_code` returns text only.
+When the program loads an image, dsh adds a user message with
+`source.kind: "ptc-mode"` after the tool result. D31 refused a non-offloaded
+image at that boundary. Three subagents on `claude-code-session` ended with
+`UNSUPPORTED_INPUT` after they loaded an image in `run_code`.
+
+dsh does not move that image into the tool result for its own routes. The
+`@deepseek-ai/dsh-llm-pi-ai` 0.2.2-rc.1 adapter sends the tool result and the
+user image message as two messages.
+
+Decision: remove the D31 image refusal. Prepare a trailing image the same way
+as an image in a user message (D15). Send it in the same mid-turn input as its
+message, before the result release. Do not move it into the tool result. Count
+the prepared trailing images in the retained generation image total. When that
+total is above its threshold, start the recorded `image-budget` generation
+(D32) and send nothing mid-turn. An offloaded trailing image stays placeholder
+text and reads no bytes.
+
+Reason: a live measurement on 2026-11-12 used official Agent SDK 0.3.322,
+Claude Code 2.1.322, the first-party subscription login, and the model `haiku`.
+One MCP tool handler parked. The probe queued one trailing user message with a
+text block and a synthetic PNG with the word `QUOKKA58`, then released the
+result:
+
+- One native turn and one result. The answer held the tool token and
+  `QUOKKA58`.
+- The raw request after the tool result had one user message with three blocks
+  in this order: the `tool_result` with the tool text only, a CLI-generated
+  `<system-reminder>` text block with the trailing text, and the complete image.
+
+With CLI 2.1.319, D31 recorded the trailing text in a separate system-role
+message. With CLI 2.1.322 the text and the image are blocks of the user message
+that holds the `tool_result`. The delivery order of D31 does not change.
+
+Limits: the probe used the SDK directly, not the plugin in a dsh profile. It did
+not measure `sonnet`, `opus`, several trailing images, or signed-thinking
+retention across the mid-turn message.
+
+Evidence: [trailing-image-probe-2026-11-12.json](evidence/trailing-image-probe-2026-11-12.json)
+and offline rows O77, O114, and O115.

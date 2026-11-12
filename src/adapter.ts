@@ -482,7 +482,7 @@ export class ClaudeCodeAdapter extends LlmAdapter {
     // must offload. It is thrown before the native boundary, so a parked tool
     // batch stays private to this generation and dsh can retry the step.
     this.assertRequestImageBudget(options.messages)
-    const addedImages = preparedImageStats(userContent, toolResults)
+    const addedImages = preparedImageStats(userContent, toolResults, trailingContent)
     if (exceedsGenerationImageLimit(
       { count: live.retainedImageCount, bytes: live.retainedImageBytes },
       addedImages,
@@ -527,8 +527,9 @@ export class ClaudeCodeAdapter extends LlmAdapter {
 
   /**
    * Prepare the user messages that dsh placed after a tool-result batch.
-   * A non-offloaded image is refused: the measured CLI mid-turn surface is a
-   * text system message, and this path has no image measurement.
+   * An image keeps its own block, the same as in a user message. The live
+   * measurement in D40 shows that the CLI sends it after the `tool_result`
+   * block in the same model request. It does not put it inside the result.
    */
   private async prepareTrailingContent(
     trailing: readonly (readonly OutgoingBlock[])[],
@@ -536,12 +537,6 @@ export class ClaudeCodeAdapter extends LlmAdapter {
   ): Promise<readonly (readonly NativeContentBlock[])[]> {
     const prepared: (readonly NativeContentBlock[])[] = []
     for (const blocks of trailing) {
-      if (blocks.some((block) => block.type === 'image' && block.offloaded !== true)) {
-        throw pluginFailure(
-          'UNSUPPORTED_INPUT',
-          'An image in a trailing mid-turn user message is not supported.',
-        )
-      }
       prepared.push(await this.prepareContent(blocks, signal))
     }
     return prepared
@@ -997,10 +992,12 @@ function changedConfigurationFields(
 function preparedImageStats(
   content: readonly NativeContentBlock[] | undefined,
   results: readonly NativeToolResult[] | undefined,
+  trailing: readonly (readonly NativeContentBlock[])[] = [],
 ): ImageContentStats {
   let stats: ImageContentStats = { count: 0, bytes: 0 }
   if (content !== undefined) stats = addImageContentStats(stats, imageContentStats(content))
   for (const result of results ?? []) stats = addImageContentStats(stats, imageContentStats(result.content))
+  for (const blocks of trailing) stats = addImageContentStats(stats, imageContentStats(blocks))
   return stats
 }
 

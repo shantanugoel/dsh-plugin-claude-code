@@ -342,6 +342,52 @@ test('an image-budget change on a tool-result continuation quotes the outcome', 
   assert.equal(nativeImageCount(runtime, 1), 0)
 })
 
+test('trailing mid-turn images count toward the retained generation threshold', async () => {
+  clearRequestVersionBytesCache()
+  const runtime = new ScriptedNativeRuntime()
+  const attachments = new FakeImageAttachments()
+  const { model } = makeAdapter({ runtime, spendGate: gate(), attachments: () => attachments })
+  runtime.enqueue({
+    events: [
+      { type: 'block-start', messageId: 'm1', index: 0, blockType: 'tool-call' },
+      { type: 'tool-delta', messageId: 'm1', index: 0, id: 'call-1', name: 'echo', argumentsDelta: '{"value":"one"}' },
+      { type: 'block-stop', messageId: 'm1', index: 0 },
+      { type: 'usage', inputTokens: 3, outputTokens: 2 },
+      { type: 'message-stop', messageId: 'm1', stopReason: 'tool_use' },
+    ],
+  })
+  const tools = [{ name: 'echo', description: 'Echo text.', parameters: { type: 'object' } }]
+  const first = await collect(model, {
+    ...textRequest('ignored', 'image-budget-trailing'),
+    tools,
+    messages: [userMessage('do a tool', Array.from({ length: 50 }, (_value, index) => imageRef(index)))],
+  })
+  assert.equal(first.at(-1)?.type, 'finish')
+
+  // A text-only tool result, then a trailing user message with 40 images.
+  // The live generation would hold 90 images, so the adapter starts one
+  // recorded generation and sends nothing mid-turn.
+  const messages = [
+    userMessage('do a tool', Array.from({ length: 50 }, (_value, index) => imageRef(index)), 20),
+    assistantMessage(first, 'assistant-1'),
+    {
+      role: 'tool',
+      id: 'result-call-1',
+      toolCallId: 'call-1',
+      isError: false,
+      content: [{ type: 'text', text: 'run_code finished' }],
+      source: { kind: 'tool', callId: 'call-1' },
+    },
+    userMessage('loaded images', Array.from({ length: 40 }, (_value, index) => imageRef(200 + index))),
+  ] as GenerateOptions['messages']
+  runtime.enqueue(textTurn('after rollover', 'm2'))
+  const second = await collect(model, { ...textRequest('ignored', 'image-budget-trailing'), tools, messages })
+  assert.equal(second.at(-1)?.type, 'finish')
+  assert.equal(runtime.starts.length, 2)
+  assert.equal(runtime.midTurnInputs.length, 0)
+  assert.equal(generationChange(second)['reason'], 'image-budget')
+})
+
 test('a turn below the retained image threshold keeps the same native generation', async () => {
   clearRequestVersionBytesCache()
   const runtime = new ScriptedNativeRuntime()

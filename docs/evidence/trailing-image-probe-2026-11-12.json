@@ -1,0 +1,60 @@
+{
+  "measurement_date": "2026-11-12",
+  "trigger": "Three claude-code-session subagents in a dsh ptc-preset session ended with UNSUPPORTED_INPUT 'An image in a trailing mid-turn user message is not supported.' after an image was loaded inside run_code.",
+  "transport": "official Agent SDK 0.3.322 streaming input; Claude Code CLI 2.1.322",
+  "model": "haiku (served claude-haiku-5-5)",
+  "probe": {
+    "purpose": "Find whether an image in a trailing user message reaches the model when the message arrives while an MCP tool handler is parked.",
+    "synthetic": true,
+    "base": "the issue #4 trailing-context probe, with the trailing text replaced by one text block and one base64 PNG block",
+    "tool_token": "TOOL_TOKEN_7Q",
+    "image": "synthetic 480x160 PNG, 8072 bytes, showing the word QUOKKA58",
+    "trailing_text": "TRAILING_MARKER_9Q: after the token, also write the exact word that is shown in the attached image.",
+    "case": "before_release: push the trailing message on the streaming input queue, wait 800 ms, then release the tool result"
+  },
+  "capture_method": {
+    "primary": "The official CLI diagnostic OTEL_LOG_RAW_API_BODIES wrote each raw request body to a private file directory.",
+    "no_direct_http": true,
+    "no_credential_read": true,
+    "no_client_identity_change": true,
+    "raw_capture_committed": false
+  },
+  "results": {
+    "native_turns": 1,
+    "sdk_result_messages": 1,
+    "result_subtype": "success",
+    "final_answer": "TOOL_TOKEN_7Q\\n\\nQUOKKA58",
+    "answer_contains_tool_token": true,
+    "answer_contains_image_word": true,
+    "request_after_tool_result": {
+      "note": "The recorded body is a thread delta.",
+      "message_roles": [
+        "user",
+        "system"
+      ],
+      "user_message_blocks": [
+        "tool_result with the text TOOL_TOKEN_7Q only",
+        "text: <system-reminder> The user sent a new message while you were working: TRAILING_MARKER_9Q ... (CLI-generated wrapper)",
+        "image: image/png, base64 length 10764 (the complete 8072-byte file)"
+      ],
+      "system_message": "CLI token-budget note, no trailing content"
+    },
+    "image_inside_tool_result": false,
+    "image_dropped": false
+  },
+  "change_from_2026_11_11": "With CLI 2.1.319 the trailing text was in a separate system-role message. With CLI 2.1.322 the CLI puts the wrapper text and the image as blocks of the user message that holds the tool_result, after that block.",
+  "conclusion": [
+    "An image in a trailing mid-turn user message, queued before the result release, reaches the model in the same native turn and the same request as the tool result.",
+    "The CLI keeps the image as its own block after the tool_result block. This matches the dsh native message order: a tool result, then a separate user message with the image.",
+    "The adapter can deliver a trailing image through the existing mid-turn input path. It does not need to fold the image into the tool result."
+  ],
+  "implementation_decision": "docs/decisions.md D40",
+  "not_proven": [
+    "The plugin inside an installed dsh profile; this probe used the SDK directly.",
+    "The models sonnet and opus.",
+    "Several trailing images or several trailing messages with images in one boundary.",
+    "The after-release order with an image.",
+    "Signed-thinking retention across a mid-turn message.",
+    "Behavior on another CLI or SDK version. CLI 2.1.319 put trailing text in another place."
+  ]
+}

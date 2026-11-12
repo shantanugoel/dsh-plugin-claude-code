@@ -9,7 +9,7 @@ import type { NativeEvent, NativeToolResult } from '../src/sdk-runtime.js'
 import { EvidenceSpendGate, type SpendProof } from '../src/spend-gate.js'
 import { inputText, resultText, textRequest, textTurn } from './request.js'
 import { ScriptedNativeRuntime } from './scripted-runtime.js'
-import { SYNTHETIC_AUTH_STATUS, makeAdapter, syntheticImage } from './support.js'
+import { FakeImageAttachments, SYNTHETIC_AUTH_STATUS, makeAdapter, syntheticImage } from './support.js'
 
 const NOW = new Date('2026-11-11T00:00:00.000Z')
 const MODEL = 'claude-haiku-5-5'
@@ -276,19 +276,30 @@ test('a system message after the tool results is still refused', async () => {
   assert.equal(runtime.midTurnInputs.length, 0)
 })
 
-test('an image in a trailing mid-turn message is refused before native dispatch', async () => {
+test('an image in a trailing mid-turn message reaches the same native turn as its own block', async () => {
   const runtime = new ScriptedNativeRuntime()
-  runtime.enqueue({ events: toolEvents(['call-1']) })
+  const order: string[] = []
+  let delivered: NativeToolResult | undefined
+  runtime.enqueue({
+    events: toolEvents(['call-1']),
+    invokeHandlers: async (call) => {
+      delivered = await call('call-1')
+      const session = runtime.sessions[0]
+      order.push(`queued-mid-turn:${session === undefined ? 'none' : session.midTurnInputs.length}`)
+    },
+  })
+  runtime.enqueue(textTurn('saw the image', 'm2'))
+  const attachments = new FakeImageAttachments()
   const { model } = makeAdapter({
     runtime,
     spendGate: gate(),
     deadlines: { ...DEFAULT_DEADLINES, resultWaitMs: 60_000 },
-    attachments: () => undefined,
+    attachments: () => attachments,
   })
   const firstRequest = firstToolRequest('trailing-5')
   const first = await collect(model, firstRequest)
   await tick()
-  await assert.rejects(collect(model, continuationRequest(firstRequest, first, [
+  const second = await collect(model, continuationRequest(firstRequest, first, [
     toolMessage('call-1', 'RESULT_TOKEN'),
     {
       role: 'user',
@@ -296,14 +307,55 @@ test('an image in a trailing mid-turn message is refused before native dispatch'
         { type: 'text', text: 'look at this' },
         { type: 'image', attachment: syntheticImage() },
       ],
+      source: { kind: 'ptc-mode' },
     },
-  ])), (error: unknown) => {
-    assert.ok(error instanceof LlmError)
-    assert.equal(error.code, 'UNSUPPORTED_INPUT')
-    return true
-  })
-  assert.equal(runtime.midTurnInputs.length, 0)
+  ]))
+  assert.equal(second.at(-1)?.type, 'finish')
   assert.equal(runtime.starts.length, 1)
+  assert.equal(attachments.requests.length, 1)
+  const session = runtime.sessions[0]
+  assert.equal(session?.midTurnInputs.length, 1)
+  const content = session?.midTurnInputs[0]?.content ?? []
+  assert.deepEqual(content[0], { type: 'text', text: 'look at this' })
+  assert.equal(content.filter((block) => block.type === 'image').length, 1)
+  assert.equal(content.at(-1)?.type, 'image')
+  // The result stays the pure tool output; the image is not moved into it.
+  assert.ok(delivered !== undefined)
+  assert.equal(resultText(delivered), 'RESULT_TOKEN')
+  assert.equal(delivered.content.some((block) => block.type === 'image'), false)
+  assert.deepEqual(order, ['queued-mid-turn:1'])
+  assert.equal(replayResponse(second)['generationChange'], undefined)
+})
+
+test('an offloaded image in a trailing mid-turn message is sent as placeholder text', async () => {
+  const runtime = new ScriptedNativeRuntime()
+  runtime.enqueue({ events: toolEvents(['call-1']) })
+  runtime.enqueue(textTurn('ok', 'm2'))
+  const attachments = new FakeImageAttachments()
+  const { model } = makeAdapter({
+    runtime,
+    spendGate: gate(),
+    deadlines: { ...DEFAULT_DEADLINES, resultWaitMs: 60_000 },
+    attachments: () => attachments,
+  })
+  const firstRequest = firstToolRequest('trailing-5b')
+  const first = await collect(model, firstRequest)
+  await tick()
+  const second = await collect(model, continuationRequest(firstRequest, first, [
+    toolMessage('call-1', 'RESULT_TOKEN'),
+    {
+      role: 'user',
+      content: [
+        { type: 'text', text: 'old screenshot' },
+        { type: 'image', attachment: syntheticImage(), offloaded: true },
+      ],
+    },
+  ]))
+  assert.equal(second.at(-1)?.type, 'finish')
+  assert.equal(attachments.requests.length, 0)
+  const content = runtime.sessions[0]?.midTurnInputs[0]?.content ?? []
+  assert.equal(content.some((block) => block.type === 'image'), false)
+  assert.equal(content.length, 2)
 })
 
 test('trailing content with a prompt change uses the recorded rollover', async () => {

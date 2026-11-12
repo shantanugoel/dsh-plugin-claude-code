@@ -247,8 +247,8 @@ outcomes. A complete synthetic dsh loop performs two steps on one fake session.
   waiting-for-results suffix into the tool-result batch and trailing user
   messages. Deliver the trailing messages inside the same native turn before the
   result release, as the direct SDK probe measured. Never move the content into
-  a tool result. Refuse a developer or system message at that boundary, and
-  refuse a non-offloaded image in a trailing message.
+  a tool result. Refuse a developer or system message at that boundary. Deliver
+  a trailing image as its own block (D40 replaced the earlier image refusal).
 - [x] Add offline tests O74 to O78 for a reminder after results, two trailing
   messages, a system or developer message at the boundary, a trailing image,
   and trailing content with a recorded rollover.
@@ -583,3 +583,22 @@ setting (D39).
 
 Completion: the documents state the exact limit and the setting that changes
 it, and a session on one Claude model started a subagent on another model.
+
+## M18. Deliver an image in a trailing mid-turn user message
+
+Status on 2026-11-12: offline work is complete. One direct SDK probe measured
+the CLI behavior. In the installed desktop profile, a subagent loaded the
+synthetic image with `read_image` inside `run_code`. Its turn continued and it
+read the word. The served model of that run was not recorded.
+
+- [x] Find why three `ptc` subagents ended with `UNSUPPORTED_INPUT` after
+  `run_code` loaded an image: the D31 refusal of a trailing image.
+- [x] Check the dsh native message order: the `pi-ai` adapter keeps the image
+  in a separate user message after the tool result.
+- [x] Measure a trailing image before the result release (D40).
+- [x] Remove the refusal. Count trailing images in the retained generation
+  image total.
+- [x] Update offline row O77 and add rows O114 and O115.
+- [ ] Measure a `run_code` image in an installed dsh profile with `opus`.
+
+Completion: a subagent that loads an image in `run_code` continues its turn.
