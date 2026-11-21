@@ -146,10 +146,12 @@ export function classifyNativeResult(facts: NativeResultFacts): NativeTurnOutcom
 
 /** Build the dsh error for one mapped native failure. */
 export function nativeFailureError(failure: NativeFailure): LlmError {
-  return new LlmError(
-    failure.message,
-    failure.code,
-    failure.status === undefined ? undefined : { status: failure.status },
+  // fromFailure keeps the mapped code string as given; the constructor code
+  // type is closed to built-in codes since dsh 0.2.2-rc.2.
+  return LlmError.fromFailure(
+    failure.status === undefined
+      ? { code: failure.code, message: failure.message }
+      : { code: failure.code, message: failure.message, status: failure.status },
   )
 }
 

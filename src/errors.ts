@@ -21,9 +21,14 @@ export type PluginFailureCode = (typeof PLUGIN_FAILURE_CODES)[number]
 /**
  * Build one non-retryable plugin failure.
  * The message must not include account data, tokens, or request bodies.
+ *
+ * dsh 0.2.2-rc.2 closed the `LlmError` constructor code type to its built-in
+ * set. `LlmError.fromFailure` is the documented path for a provider-chosen
+ * code string: it keeps the code as given, and a code outside the built-in
+ * retry choices stays non-retryable.
  */
 export function pluginFailure(code: PluginFailureCode, message: string): LlmError {
-  return new LlmError(message, code)
+  return LlmError.fromFailure({ code, message })
 }
 
 /** True when a value is a plugin failure with this code. */

@@ -9,7 +9,7 @@ approvals.
 
 ## Requirements
 
-- DeepSeek Harness 0.2.2-rc.1.
+- DeepSeek Harness 0.2.2-rc.3.
 - The official [Claude Code CLI](https://docs.claude.com/en/docs/claude-code)
   on `PATH`, signed in with a claude.ai subscription. The plugin refuses an API
   key and a Claude Console login.

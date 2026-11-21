@@ -1042,3 +1042,30 @@ retention across the mid-turn message.
 
 Evidence: [trailing-image-probe-2026-11-12.json](evidence/trailing-image-probe-2026-11-12.json)
 and offline rows O77, O114, and O115.
+
+## D41: Retarget to dsh 0.2.2-rc.3
+
+Date: 2026-11-14. Status: offline evidence only.
+
+Change: this change retargets the plugin from dsh 0.2.2-rc.1 to dsh 0.2.2-rc.3.
+`engines.dsh`, the `@deepseek-ai` peer ranges, and the development packages
+move to `0.2.2-rc.3`. The exact-version policy stays: plugin 0.2.5 keeps the
+rc.1 pin for rc.1 users, and a release of this change carries a new plugin
+version pinned to rc.3.
+
+Reason: dsh 0.2.2-rc.3 closed the `LlmError` constructor code type to its
+built-in set. The plugin uses its own stable failure codes. The compile failed
+at two sites. Both now build failures through `LlmError.fromFailure`. That
+method is the documented path for a provider-chosen code string. The
+constructor still accepts and keeps any non-empty code string at runtime. A
+code outside the built-in retry choices stays non-retryable, so the plugin
+behavior does not change.
+
+Evidence: `npm run check` passes against `@deepseek-ai/dsh-llm` 0.2.2-rc.3.
+The offline suite passes 214 of 214 tests. One test first failed because it
+asserted the old rc.1 peer pin; this change updates that assertion to rc.3.
+A dsh 0.2.2-rc.3 desktop profile accepted the package and composed the
+`claude-code-session` bundle entry as active.
+
+Limits: no live dsh integration test ran on rc.3 at the time of this entry.
+No live model turn was sent.

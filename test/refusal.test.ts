@@ -212,7 +212,7 @@ test('package scripts keep live tests separate', () => {
   assert.equal(manifest.scripts['prepack'], undefined)
   assert.equal(manifest.main, './dist/index.js')
   assert.ok(manifest.files.some((file) => file.startsWith('dist/')))
-  assert.equal(manifest.peerDependencies['@deepseek-ai/dsh-llm'], '0.2.2-rc.1')
+  assert.equal(manifest.peerDependencies['@deepseek-ai/dsh-llm'], '0.2.2-rc.3')
   assert.equal(manifest.dsh.bundle.patch, './cordis.patch.yml')
   assert.equal(manifest.dsh.bundle.listedByDefault, false)
   const patch = readFileSync(fileURLToPath(new URL('../../cordis.patch.yml', import.meta.url)), 'utf8')

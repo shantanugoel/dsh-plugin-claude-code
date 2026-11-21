@@ -6,7 +6,7 @@ design controls behavior when a type example omits a detail.
 
 ## Package and module layout
 
-Use TypeScript with ESM. Target Node 24.9 or later and dsh 0.2.2-rc.1. Pin the
+Use TypeScript with ESM. Target Node 24.9 or later and dsh 0.2.2-rc.3. Pin the
 selected SDK and development dependencies in a lockfile. Keep dsh runtime
 packages as peers so the plugin and host use the same service classes.
 

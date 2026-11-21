@@ -1,18 +1,53 @@
 # Compatibility record
 
-Review date: 2026-11-11.
+Review dates: 2026-11-11 and 2026-11-14.
 
 This record lists published package identities and the imports this plugin uses.
 A declaration check is not a live session test. Do not treat it as proof that a
 flag changes a native request.
 
-## dsh baseline
+## dsh baseline, 2026-11-14
 
-The tested version is dsh 0.2.2-rc.1. On 2026-11-11 the npm registry version
+The tested version is dsh 0.2.2-rc.3. The plugin `engines.dsh` value is the
+exact version `0.2.2-rc.3`. The peer and development packages moved to
+`0.2.2-rc.3` in step. Plugin 0.2.5 stays on 0.2.2-rc.1 for rc.1 users.
+
+dsh 0.2.2-rc.3 closed the `LlmError` constructor code type to its built-in set.
+This plugin uses its own stable failure codes. Two sites failed to compile.
+Both now build failures through `LlmError.fromFailure`. That method is the
+documented path for a provider-chosen code string. The constructor still keeps
+any non-empty code string at runtime. A code outside the built-in retry choices
+stays non-retryable. The plugin behavior does not change.
+
+Checks on 2026-11-14:
+
+- The type check passed against the `@deepseek-ai/dsh-llm` 0.2.2-rc.3
+  declarations.
+- The offline suite passed 214 of 214 tests.
+- A `dsh plugin add` of the checked-out package on a dsh 0.2.2-rc.3 desktop
+  profile accepted the requirement and composed the `claude-code-session`
+  bundle entry as active.
+- A live model turn in dsh was not run at the time of this entry.
+
+Integrity values for the rc.3 development packages come from the regenerated
+`package-lock.json`:
+
+| Package | Version | Integrity |
+| --- | --- | --- |
+| `@deepseek-ai/dsh-attachment` | 0.2.2-rc.3 | `sha512-lTWxyJXEDN7QXQ2voe3EAyxnqLaiM7a/m2VoBBEK5aFSxNNjC6Dkl/TkPQHc5/56DFHICvqWp8im9MZiHwh3qg==` |
+| `@deepseek-ai/dsh-compaction` | 0.2.2-rc.3 | `sha512-/MR655vo8K1HPPIRKMDrHIL627jRWWeP4h6svCE8ZwTWDpEDuvFeNdqr6erZvP7JjUFibl7dITqvlrqXP+6nRA==` |
+| `@deepseek-ai/dsh-commands` | 0.2.2-rc.3 | `sha512-/BfwhWpyameafVwUis8TNNewBFF0RiZTsH7D+ilDRH9daYg/Ed10D1jOQf55RQCnH/SX/9QQtHygC0OLL06WyA==` |
+| `@deepseek-ai/dsh-llm` | 0.2.2-rc.3 | `sha512-WdpGURXwBmFchHE7k8o+PUtncjPjU4NNkpnv4lBWT02ZrA+2sIF0WwcU3L/g40QmT6C9yRtFEUe+2GhpzUcTWQ==` |
+| `@deepseek-ai/dsh-package-manifest` | 0.2.2-rc.3 | `sha512-5HhXGTnI0CDmFfJ08OYte3iIp+dr406qjKZGhfaxqdCtgZoHUFBrE+KerEZ3TK/fZbzVQ+qouTS5jIax+UcL3w==` |
+| `@deepseek-ai/dsh-scope` | 0.2.2-rc.3 | `sha512-TVTdI+9rhGpDUAgoApgLt/Iyi4hq+S5Ml7zFZ1JPCXGaU5etc8FqpBfGaKB9ei3siCKfpw1PuFQGvDwgFxOZsw==` |
+| `@deepseek-ai/dsh-session` | 0.2.2-rc.3 | `sha512-OPrsoWwbzyrv7FpbtYs8bb/KBjBwY/1DUc7iAdXq33m/ON4bVn+OWKYeyOPLAVcP8LoNQhp26KdseG5x69OSBg==` |
+
+## dsh baseline, 2026-11-11
+
+The tested version was dsh 0.2.2-rc.1. On 2026-11-11 the npm registry version
 list for `@deepseek-ai/dsh` had 42 versions and ended at `0.2.2-rc.1`. The
 `latest` and `next` dist-tags named `0.2.2-rc.1`, which was published on
-2026-11-04. No later release exists. The plugin does not claim support for a
-later dsh release until its own compatibility test passes.
+2026-11-04. No later release existed then.
 
 The plugin `engines.dsh` value is the exact version `0.2.2-rc.1`. The dsh plugin
 manager evaluates this field alone: a runtime version that does not satisfy the
